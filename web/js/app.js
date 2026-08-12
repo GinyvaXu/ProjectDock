@@ -47,7 +47,9 @@
     S.agents = agents;
     S.projects = projects;
     S.types = types;
+    S.appVersion = health.version;
     $("appVersion").textContent = "v" + health.version;
+    checkUpdateSilent();
     applyTheme(settings.theme);
     fillTypeSelects();
     fillAgentSelect();
@@ -968,6 +970,9 @@
       const el = form.elements["policy_" + k];
       if (el) el.checked = policy[k] !== false;
     });
+    form.elements.update_repo.value = S.settings.update_repo || "GinyvaXu/ProjectDock";
+    const cur = $("updateCurrent");
+    if (cur) cur.textContent = S.appVersion || "";
     renderTypeTabsEditor();
     openModal("settings");
   }
@@ -1002,6 +1007,7 @@
           backup: form.elements.backup.checked,
           type_tabs: typeTabs,
           confirm_policy: confirmPolicy,
+          update_repo: form.elements.update_repo.value.trim(),
         },
       });
       applyTheme(S.settings.theme);
@@ -1080,6 +1086,59 @@
     renderSidebar();
   }
 
+  /* ============ 软件更新 ============ */
+  async function checkUpdateSilent() {
+    try {
+      const r = await api("/api/update/check");
+      if (r && r.update_available) {
+        toast("发现新版本 v" + r.latest + "，可在设置中更新", "ok");
+      }
+    } catch (err) { /* 静默失败 */ }
+  }
+
+  async function checkUpdate() {
+    const status = $("updateStatus");
+    const actions = $("updateActions");
+    if (!status) return;
+    status.className = "update-status";
+    status.textContent = "正在检查更新…";
+    try {
+      const r = await api("/api/update/check");
+      if (r.status === "unknown") {
+        status.textContent = "无法检查更新（未安装 gh 或仓库不可达）";
+        actions.hidden = true;
+        return;
+      }
+      if (!r.update_available) {
+        status.textContent = "已是最新版本 v" + esc(r.current) + (r.latest ? "（最新 v" + esc(r.latest) + "）" : "");
+        actions.hidden = true;
+        return;
+      }
+      status.textContent = "发现新版本 v" + esc(r.latest);
+      $("updateInfo").innerHTML = "<div class='build-log'>" + esc((r.notes || "（无更新说明）").slice(0, 2000)) + "</div>";
+      actions.hidden = false;
+    } catch (err) {
+      status.textContent = "检查更新失败：" + esc(err.message);
+      actions.hidden = true;
+    }
+  }
+
+  async function downloadAndInstall() {
+    const status = $("updateStatus");
+    const actions = $("updateActions");
+    status.textContent = "正在下载安装包…";
+    try {
+      const dl = await api("/api/update/download", { method: "POST", body: {} });
+      status.textContent = "已下载 " + fmtSize(dl.size) + "，正在启动安装…";
+      await api("/api/update/install", { method: "POST", body: { path: dl.path } });
+      status.textContent = "安装程序已启动，应用即将自动关闭。完成后请从桌面快捷方式重新打开。";
+      actions.hidden = true;
+      setTimeout(() => { try { window.close(); } catch (e) { /* ignore */ } }, 900);
+    } catch (err) {
+      status.textContent = "更新失败：" + esc(err.message);
+    }
+  }
+
   /* ============ 新建 / 导入 ============ */
   async function createProject(ev) {
     ev.preventDefault();
@@ -1150,6 +1209,8 @@
     $("btnImport").addEventListener("click", () => openModal("import"));
     $("btnSettings").addEventListener("click", openSettings);
     $("btnManageTypes").addEventListener("click", openTypesModal);
+    $("btnCheckUpdate").addEventListener("click", checkUpdate);
+    $("btnDownloadUpdate").addEventListener("click", downloadAndInstall);
     $("searchInput").addEventListener("input", (e) => { S.search = e.target.value; renderGrid(); });
     $("btnDrawerClose").addEventListener("click", closeDrawer);
     $("btnOpenFolder").addEventListener("click", () => handleOverviewAction("open"));

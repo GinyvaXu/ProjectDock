@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 
 APP_NAME = "ProjectDock"
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.4.0"
 
 
 def app_data_dir() -> Path:
@@ -44,6 +44,7 @@ class Settings:
         "type_tabs": {},
         "confirm_policy": {"push": True, "delete": True, "github_create": True,
                            "release": True, "archive": True},
+        "update_repo": "GinyvaXu/ProjectDock",
     }
 
     def __init__(self, data_dir: Path | None = None):
@@ -104,6 +105,10 @@ class Settings:
         """按确认策略判断某类操作是否需要用户确认（未配置默认按需确认）。"""
         return bool(self.confirm_policy.get(key, True))
 
+    @property
+    def update_repo(self) -> str:
+        return str(self._data.get("update_repo") or "GinyvaXu/ProjectDock").strip() or "GinyvaXu/ProjectDock"
+
     def as_dict(self) -> dict:
         return {
             "root": str(self.root),
@@ -114,6 +119,7 @@ class Settings:
             "backup": self.backup,
             "type_tabs": self.type_tabs,
             "confirm_policy": self.confirm_policy,
+            "update_repo": self.update_repo,
         }
 
     def update(self, **kwargs) -> dict:
@@ -133,6 +139,8 @@ class Settings:
                     merged = dict(self.DEFAULTS["confirm_policy"])
                     merged.update({k: bool(v) for k, v in value.items()})
                     self._data[key] = merged
+            elif key == "update_repo":
+                self._data[key] = str(value or "").strip() or "GinyvaXu/ProjectDock"
         self.save()
         return self.as_dict()
 

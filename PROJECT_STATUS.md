@@ -1,7 +1,7 @@
 # ProjectDock 项目状态
 
-- 版本：0.3.0（CLI 工具链 + 确认策略）
-- 状态：✅ v0.1 核心功能 + v0.2 阶段 1/2/3 完成
+- 版本：0.4.0（自动更新 + Setup 安装包）
+- 状态：✅ v0.1 核心功能 + v0.2 阶段 1/2/3 + 自动更新
 - GitHub：https://github.com/GinyvaXu/ProjectDock（私有，main 分支）
 
 ## v0.1.0 完成项
@@ -45,8 +45,13 @@
 3. 契约与 agent 提示词注入确认策略；Settings/API 持久化 confirm_policy
 4. 测试：111 个用例通过，覆盖率 85.36%（门槛 80%）
 
-## 待办（v0.3 后续）
-- 自动更新（检查 GitHub 新版本 → 下载 → 安装）、GitHub Releases 拉取
-- 模板导入/导出、多根目录、托盘、全局快捷键
+## v0.4.0 完成项（自动更新）
+1. 自动更新链路：GitHub Releases 检查（gh/API）→ Setup 下载 → 静默安装（Inno Setup）
+2. 设置面板「软件更新」UI + 启动自动检查提示；更新仓库可配置
+3. build_setup.py 构建 Setup 安装包（%LOCALAPPDATA%/Programs/ProjectDock，无需管理员）
+4. 测试：123 个用例通过，覆盖率 85.32%（门槛 80%）
+
+## 待办（后续）
+- GitHub Releases 拉取（下载/展示历史版本）、模板导入/导出、多根目录、托盘、全局快捷键
 - 自动更新（检查 GitHub 新版本 → 下载 → 安装）
 - 多根目录、托盘、全局快捷键

@@ -87,3 +87,8 @@ class SettingsUpdate(BaseModel):
     backup: bool | None = None
     type_tabs: dict[str, list[str]] | None = None
     confirm_policy: dict[str, bool] | None = None
+    update_repo: str | None = None
+
+
+class UpdateInstall(BaseModel):
+    path: str = Field(min_length=1)

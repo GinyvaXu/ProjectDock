@@ -2,6 +2,17 @@
 
 本文件记录 ProjectDock 的版本迭代。格式：语义化版本 + 日期 + 变更分组。
 
+## [0.4.0] - 2026-08-12
+### Added（自动更新 + Setup 安装包）
+- 自动更新链路：检查 GitHub Releases → 下载 Setup 安装包 → 静默安装，全链路打通
+- 设置面板新增「软件更新」：显示当前版本、一键检查更新、发现新版本展示更新说明并下载安装；启动时自动静默检查并提示
+- 更新仓库可配置（Settings.update_repo，默认 GinyvaXu/ProjectDock）；检查用 gh CLI（私有仓库），失败回落 GitHub API
+- 新端点：GET /api/update/check、POST /api/update/download、POST /api/update/install
+- Setup 安装包构建：build_setup.py（PyInstaller windowed + Inno Setup 6 编译），
+  安装到 %LOCALAPPDATA%/Programs/ProjectDock（无需管理员），CloseApplications=force 自动关闭旧进程，
+  创建桌面/开始菜单快捷方式，安装后可选立即运行
+- 测试 123 个通过，覆盖率 85.32%（门槛 80%）；GitHub Release 上传 Setup 安装包即激活更新链路
+
 ## [0.3.0] - 2026-08-12
 ### Added（v0.2 阶段 3：CLI 工具链 + 确认策略）
 - projectdock-cli 新增 init / build / release / archive 子命令（供外部 AI agent 对接）

@@ -15,13 +15,13 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import agent as agent_mod
-from . import ailog, builder, compliance, console, contract, github, presets, release, scanner, versioning
+from . import ailog, builder, compliance, console, contract, github, presets, release, scanner, update, versioning
 from .agent import AGENTS
 from .config import APP_NAME, APP_VERSION
 from .db import delete_custom_type, delete_project, get_custom_type, get_project, list_custom_types, list_projects, upsert_custom_type, upsert_project
 from .models import (AGENT_NAMES, PROJECT_TYPES, THEMES, AILogCreate, AgentBatch, AgentRun,
                      BuildRun, ComplianceFix, CustomTypeCreate, OpenPath, ProjectCreate,
-                     ProjectImport, ProjectInit, ReleaseRun, SettingsUpdate)
+                     ProjectImport, ProjectInit, ReleaseRun, SettingsUpdate, UpdateInstall)
 from .state import AppState
 
 def _locate_web_dir() -> Path:
@@ -103,6 +103,7 @@ def create_app(state: AppState) -> FastAPI:
             github_auto=payload.github_auto, github_visibility=payload.github_visibility,
             backup=payload.backup, type_tabs=payload.type_tabs,
             confirm_policy=payload.confirm_policy,
+            update_repo=payload.update_repo,
         )
 
     @api.get("/presets")
@@ -452,6 +453,28 @@ def create_app(state: AppState) -> FastAPI:
                 agent_mod.run_agent_task(state, pj, ag, pr, emit))
             jobs.append({"project_id": pid, "job_id": job.id})
         return {"jobs": jobs, "agent": agent}
+
+    @api.get("/update/check")
+    def update_check() -> dict:
+        return update.check_update(APP_VERSION, state.settings.update_repo)
+
+    @api.post("/update/download")
+    def update_download() -> dict:
+        repo = state.settings.update_repo
+        rel = update.latest_release(repo)
+        if not rel or not rel.get("tag"):
+            raise HTTPException(status_code=400, detail="无法获取最新版本信息（请确认已安装 gh 并登录）")
+        result = update.download_setup(repo, rel["tag"], update.update_temp_dir())
+        if not result["ok"]:
+            raise HTTPException(status_code=400, detail=result["error"])
+        return {"ok": True, "path": result["path"], "size": result["size"], "tag": rel["tag"]}
+
+    @api.post("/update/install")
+    def update_install(payload: UpdateInstall) -> dict:
+        result = update.install_setup(payload.path)
+        if not result["ok"]:
+            raise HTTPException(status_code=400, detail=result["error"])
+        return {"ok": True}
 
     @api.get("/agents")
     def list_agents() -> list[dict]:

@@ -134,6 +134,17 @@
             <label class="check"><input type="checkbox" name="policy_archive" checked><span>归档移动构建产物</span></label>
           </div>
         </label>
+        <label class="field"><span>软件更新（自动检查 GitHub Releases）</span>
+          <div class="update-box">
+            <div class="update-row"><span>当前版本：v<span id="updateCurrent"></span></span><span class="spacer"></span><button type="button" class="btn btn-sm" id="btnCheckUpdate">检查更新</button></div>
+            <div class="update-status" id="updateStatus"></div>
+            <div id="updateActions" hidden>
+              <div class="update-info" id="updateInfo"></div>
+              <div class="action-row"><button type="button" class="btn btn-sm btn-primary" id="btnDownloadUpdate">下载并安装</button></div>
+            </div>
+          </div>
+        </label>
+        <label class="field"><span>更新仓库（owner/repo）</span><input name="update_repo" placeholder="GinyvaXu/ProjectDock"></label>
         <label class="field"><span>类型菜单模板（勾选该类型显示的菜单；软件类含版本/构建，文稿类显示文稿版本）</span><div class="type-tabs-editor" id="typeTabsEditor"></div></label>
         <footer class="modal-foot">
           <button type="button" class="btn" id="btnManageTypes">自定义类型</button>
