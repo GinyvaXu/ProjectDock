@@ -124,10 +124,11 @@ def test_agent_batch_endpoint(client, state, monkeypatch):
     created = client.post("/api/projects", json={"name": "批量项目", "type": "软件"}).json()
     ran = {}
 
-    async def fake_run_agent_task(st, proj_path, agent, prompt, emit):
+    async def fake_run_agent_task(st, proj_path, agent, prompt, emit, context=None):
         ran["path"] = str(proj_path)
         ran["agent"] = agent
         ran["prompt"] = prompt
+        ran["context"] = context
         emit({"type": "line", "text": "ok"})
 
     monkeypatch.setattr(api_mod.agent_mod, "run_agent_task", fake_run_agent_task)
@@ -143,6 +144,8 @@ def test_agent_batch_endpoint(client, state, monkeypatch):
     assert ok["job_id"]
     assert bad["error"]
     assert ran["path"].endswith(created["id"])
+    assert ran["context"] and "ProjectDock" in ran["context"]
+    assert "统一整理版本" in ran["prompt"]
 
 
 def test_settings_type_tabs_roundtrip(client):

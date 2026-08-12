@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 
 APP_NAME = "ProjectDock"
-APP_VERSION = "0.5.0"
+APP_VERSION = "0.5.1"
 
 
 def app_data_dir() -> Path:

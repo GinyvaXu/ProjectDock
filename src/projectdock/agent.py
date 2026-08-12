@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import tempfile
 from pathlib import Path
 
 from . import ailog, backup, contract
@@ -11,11 +12,13 @@ AGENTS = {
     "claude": {
         "label": "Claude Code",
         "command": ["claude", "-p", "{prompt}", "--dangerously-skip-permissions"],
+        "system_args": ["--append-system-prompt", "{file}"],
         "hint": "claude -p \"...\" 全自动模式（跳过权限确认，依赖 git 与备份兜底）",
     },
     "pi": {
         "label": "Pi",
         "command": ["pi", "-p", "{prompt}"],
+        "system_args": ["--append-system-prompt", "{file}"],
         "hint": "pi -p \"...\" 非交互模式（在当前项目目录执行）",
     },
 }
@@ -92,7 +95,7 @@ def system_prompt(project_name: str, project_path: str, type_info: dict | None =
     return "\n".join(lines)
 
 
-async def run_agent_task(state, project_path: Path, agent: str, prompt: str, emit) -> None:
+async def run_agent_task(state, project_path: Path, agent: str, prompt: str, emit, context: str | None = None) -> None:
     """全自动执行 agent 任务：任务前备份 -> 流式执行 -> 输出任务报告（操作/变更/git）。
 
     结构化事件：emit({"type": "status", "text": ...}) 供前端展示 agent 当前活动
@@ -111,7 +114,18 @@ async def run_agent_task(state, project_path: Path, agent: str, prompt: str, emi
         except Exception as exc:  # noqa: BLE001
             emit(f"[备份] 跳过（{exc}）")
 
-    cmd = resolve_command(build_command(agent, prompt))
+    base_cmd = build_command(agent, prompt)
+    tmp_ctx = None
+    if context:
+        try:
+            tmp_ctx = tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8")
+            tmp_ctx.write(context)
+            tmp_ctx.close()
+            extra = [x.format(file=tmp_ctx.name) if "{file}" in x else x for x in (AGENTS.get(agent) or AGENTS["pi"]).get("system_args", [])]
+            base_cmd = [base_cmd[0], *extra, *base_cmd[1:]]
+        except OSError:
+            tmp_ctx = None
+    cmd = resolve_command(base_cmd)
     status(f"正在调用 {label}：{' '.join(cmd[:4])}{' …' if len(cmd) > 4 else ''}")
     try:
         code = await stream_command(emit, cmd, str(project_path))
@@ -123,6 +137,12 @@ async def run_agent_task(state, project_path: Path, agent: str, prompt: str, emi
         if hint:
             emit(f"提示：{hint}")
         raise
+    finally:
+        if tmp_ctx:
+            try:
+                os.unlink(tmp_ctx.name)
+            except OSError:
+                pass
 
     status("任务已结束，正在汇总报告…")
     emit("")

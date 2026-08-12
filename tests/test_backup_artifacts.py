@@ -174,3 +174,20 @@ def test_job_registry_emits_structured_events(state):
     line_texts = [i["text"] for i in items if i.get("type") == "line"]
     assert "普通输出行" in line_texts and "结构化行" in line_texts
     assert items[-1]["type"] == "end"
+
+
+def test_artifact_scan_dedupes_duplicate_copies(tmp_path):
+    """回归：同一版本 dist/ 与 installer/ 下的同名同大小文件只列一次；根目录 installer+build 重复也只列一次。"""
+    (tmp_path / "VERSION").write_text("0.4.0\n", encoding="utf-8")
+    for sub in ("versions/v0.4.0/dist", "versions/v0.4.0/installer", "installer", "build"):
+        (tmp_path / sub).mkdir(parents=True, exist_ok=True)
+    payload = b"EXE" * 1000
+    (tmp_path / "versions/v0.4.0/dist/app-v0.4.0.exe").write_bytes(payload)
+    (tmp_path / "versions/v0.4.0/installer/app-v0.4.0.exe").write_bytes(payload)
+    (tmp_path / "installer/app-v0.4.0.exe").write_bytes(payload)
+    (tmp_path / "build/app-v0.4.0.exe").write_bytes(payload)
+    art = list_build_artifacts(tmp_path)
+    v04 = next(v for v in art["versions"] if v["name"] == "v0.4.0")
+    assert len(v04["artifacts"]) == 1
+    root_names = [a["name"] for a in art["dist"]]
+    assert root_names.count("app-v0.4.0.exe") == 1

@@ -169,16 +169,7 @@
     showTab("overview");
     renderOverview(proj);
     showDrawer();
-    try {
-      const [versions, builds] = await Promise.all([
-        api("/api/projects/" + encodeURIComponent(id) + "/versions"),
-        api("/api/projects/" + encodeURIComponent(id) + "/builds"),
-      ]);
-      if (seq !== S.drawerSeq) return;
-      S.versions = versions;
-      S.builds = builds;
-      renderVersions();
-    } catch (err) { toast("加载版本信息失败：" + err.message, "err"); }
+    loadVersionsData();
   }
 
   function showDrawer() {
@@ -230,7 +221,10 @@
     panel.classList.add("active");
     void panel.offsetWidth;
     panel.classList.add("panel-in");
-    if (tab === "versions" && S.versions) renderVersions();
+    if (tab === "versions") {
+      if (S.versions === null && !S.versionsLoading) loadVersionsData();
+      renderVersions();
+    }
     if (tab === "compliance") renderCompliance();
     if (tab === "docs") renderDocs();
     if (tab === "ailog") renderAILog();
@@ -701,18 +695,38 @@
   /* ============ 版本与构建 ============ */
   function renderVersions() {
     if (!S.current) return;
-    const versions = S.versions || { version: null, changelog: [], artifacts: { versions: [], dist: [] }, has_versions_dir: false, has_dist_dir: false };
     const id = S.current.id;
+    const panel = $("panel-versions");
+    if (S.versions === null) {
+      panel.innerHTML =
+        "<div class='ver-block'><div class='ver-head'><h4>版本信息</h4></div>" +
+        "<div class='build-log'>" + (S.versionsFailed ? "版本信息加载失败（" + esc(S.versionsError || "") + "），请重试。" : "正在加载版本信息…") + "</div>" +
+        (S.versionsFailed ? "<button class='btn btn-sm' id='btnRetryVersions' style='margin-top:8px'>重新加载</button>" : "") +
+        "</div>";
+      const retry = $("btnRetryVersions");
+      if (retry) retry.addEventListener("click", () => { S.versionsFailed = false; renderVersions(); loadVersionsData(); });
+      return;
+    }
+    const versions = S.versions || { version: null, changelog: [], artifacts: { versions: [], dist: [] }, has_versions_dir: false, has_dist_dir: false };
+    const verBlock = (title, inner, openDefault) =>
+      "<div class='ver-block collapsible" + (openDefault ? "" : " collapsed") + "'>" +
+        "<div class='ver-head' role='button' tabindex='0'><span class='caret'>▶</span><h4>" + title + "</h4></div>" +
+        "<div class='ver-body'><div class='ver-body-inner'>" + inner + "</div></div>" +
+      "</div>";
+
     let html = "";
-    html += "<div style='display:flex;justify-content:flex-end;margin-bottom:12px'><button class='btn btn-primary btn-sm' id='btnReleaseWizard'>发布向导</button></div>";
-    html += "<div class='ver-block'><div class='ver-head'><h4>当前版本</h4></div>" +
+    html += "<div style='display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px'>" +
+      "<button class='btn btn-sm' id='btnToggleAll'>全部展开</button>" +
+      "<button class='btn btn-primary btn-sm' id='btnReleaseWizard'>发布向导</button></div>";
+
+    html += verBlock("当前版本",
       "<div class='overview-hero' style='margin-bottom:0'>" +
         (versions.version ? "<div class='ov-version'>v" + esc(versions.version) + "</div>" : "<div class='ov-sub'>项目根目录没有 VERSION 文件</div>") +
-      "</div></div>";
+      "</div>", true);
 
-    html += "<div class='ver-block'><div class='ver-head'><h4>更新日志</h4></div>";
+    let clHtml = "";
     if (versions.changelog.length) {
-      html += "<div class='changelog'>" + versions.changelog.map((e) =>
+      clHtml = "<div class='changelog'>" + versions.changelog.map((e) =>
         "<div class='cl-entry'><h5>" + esc(e.version) + "</h5>" +
         (e.date ? "<div class='cl-date'>" + esc(e.date) + "</div>" : "") +
         (e.groups || []).map((g) =>
@@ -721,22 +735,22 @@
         ).join("") + "</div>"
       ).join("") + "</div>";
     } else {
-      html += "<div class='build-log'>没有找到 CHANGELOG.md</div>";
+      clHtml = "<div class='build-log'>没有找到 CHANGELOG.md</div>";
     }
-    html += "</div>";
+    html += verBlock("更新日志", clHtml, false);
 
     const artifacts = versions.artifacts || { versions: [], dist: [], latest: [] };
     const latest = artifacts.latest || [];
-    html += "<div class='ver-block'><div class='ver-head'><h4>构建产物</h4></div>";
+    let artHtml = "";
     if (!latest.length && !artifacts.versions.length && !artifacts.dist.length) {
-      html += "<div class='build-log'>没有发现 versions/ 或 dist/ 构建产物</div>";
+      artHtml = "<div class='build-log'>没有发现 versions/ 或 dist/ 构建产物</div>";
     } else {
       if (latest.length) {
-        html += "<div class='ver-head latest-head'><h4>最新构建</h4><span class='latest-note'>按修改时间排序（版本目录 + 根 dist）</span></div>";
+        artHtml += "<div class='ver-head latest-head'><h4>最新构建</h4><span class='latest-note'>按修改时间排序（版本目录 + 根 dist）</span></div>";
         if (artifacts.root_dist_newer) {
-          html += "<div class='note-warn'>⚠ 根目录 dist/installer/build 存在比已归档版本更新的构建（未归档）</div>";
+          artHtml += "<div class='note-warn'>⚠ 根目录 dist/installer/build 存在比已归档版本更新的构建（未归档）</div>";
         }
-        html += latest.map((f) =>
+        artHtml += latest.map((f) =>
           "<div class='artifact'><span class='a-name'>" + esc(f.name) + "</span>" +
           (f.source === "versions" ? "<span class='src-badge archived'>" + esc(f.version || "") + "</span>" : "<span class='src-badge unarchived'>未归档</span>") +
           "<span class='a-size'>" + fmtSize(f.size) + "</span><span class='spacer'></span>" +
@@ -746,12 +760,12 @@
         ).join("");
       }
       artifacts.versions.forEach((v) => {
-        html += "<div class='cl-entry'><h5>" + esc(v.name) + (v.has_src ? " · 含源码快照" : "") + "</h5>" +
+        artHtml += "<div class='cl-entry'><h5>" + esc(v.name) + (v.has_src ? " · 含源码快照" : "") + "</h5>" +
           "<div class='artifact'><span class='a-name'>版本目录</span><span class='spacer'></span>" +
           "<button class='btn btn-sm' data-open='" + esc(v.path) + "'>打开文件夹</button>" +
           "<button class='btn btn-sm' data-reveal='" + esc(v.path) + "'>位置</button></div>";
         if (v.artifacts.length) {
-          html += v.artifacts.map((f) =>
+          artHtml += v.artifacts.map((f) =>
             "<div class='artifact'><span class='a-name'>" + esc(f.name) + "</span><span class='a-size'>" + fmtSize(f.size) + "</span>" +
             "<span class='spacer'></span>" +
             "<button class='btn btn-sm' data-open='" + esc(f.path) + "'>打开</button>" +
@@ -759,14 +773,14 @@
             "<button class='btn btn-sm' data-copy='" + esc(f.path) + "'>复制</button></div>"
           ).join("");
         } else {
-          html += "<div class='build-log' style='margin-top:6px'>（无 dist 产物）</div>";
+          artHtml += "<div class='build-log' style='margin-top:6px'>（无 dist 产物）</div>";
         }
-        html += "</div>";
+        artHtml += "</div>";
       });
       if (artifacts.dist.length) {
-        html += "<div class='ver-head latest-head'><h4>未归档构建（项目根目录 dist/installer/build）</h4>" +
+        artHtml += "<div class='ver-head latest-head'><h4>未归档构建（项目根目录 dist/installer/build）</h4>" +
           "<button class='btn btn-sm' id='btnGoCompliance'>去合规归档</button></div>";
-        html += artifacts.dist.map((f) =>
+        artHtml += artifacts.dist.map((f) =>
           "<div class='artifact'><span class='a-name'>" + esc(f.name) + "</span><span class='a-size'>" + fmtSize(f.size) + "</span>" +
           "<span class='spacer'></span>" +
           "<button class='btn btn-sm' data-open='" + esc(f.path) + "'>打开</button>" +
@@ -775,22 +789,36 @@
         ).join("");
       }
     }
-    html += "</div>";
+    html += verBlock("构建产物", artHtml, false);
 
-    html += "<div class='ver-block'><div class='ver-head'><h4>构建脚本</h4></div>";
+    let buildHtml = "";
     if (!S.builds.length) {
-      html += "<div class='build-log'>没有发现构建脚本（build*.py / 打包.bat）</div>";
+      buildHtml = "<div class='build-log'>没有发现构建脚本（build*.py / 打包.bat）</div>";
     } else {
-      html += S.builds.map((b) =>
+      buildHtml = S.builds.map((b) =>
         "<div class='artifact'><span class='a-name'>" + esc(b.name) + "</span><span class='spacer'></span>" +
         "<button class='btn btn-sm btn-primary' data-build='" + esc(b.name) + "'>运行构建</button></div>"
       ).join("");
     }
-    html += "<div id='buildLogBox'></div></div>";
+    buildHtml += "<div id='buildLogBox'></div>";
+    html += verBlock("构建脚本", buildHtml, false);
 
-    const panel = $("panel-versions");
     panel.innerHTML = html;
     bindPathActions(panel);
+    // 折叠/展开
+    panel.querySelectorAll(".ver-block.collapsible > .ver-head").forEach((h) => {
+      const toggle = () => h.parentElement.classList.toggle("collapsed");
+      h.addEventListener("click", toggle);
+      h.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); }
+      });
+    });
+    const toggleAll = $("btnToggleAll");
+    if (toggleAll) toggleAll.addEventListener("click", () => {
+      const anyCollapsed = panel.querySelectorAll(".ver-block.collapsible.collapsed").length > 0;
+      panel.querySelectorAll(".ver-block.collapsible").forEach((b) => b.classList.toggle("collapsed", !anyCollapsed));
+      toggleAll.textContent = anyCollapsed ? "全部折叠" : "全部展开";
+    });
     const goComp = $("btnGoCompliance");
     if (goComp) goComp.addEventListener("click", () => showTab("compliance"));
     panel.querySelectorAll("[data-copy]").forEach((btn) => {
@@ -806,7 +834,35 @@
     if (wizard) wizard.addEventListener("click", openReleaseModal);
   }
 
-  async function runBuild(script) {
+  async function loadVersionsData() {
+    if (!S.current || S.versionsLoading) return;
+    S.versionsLoading = true;
+    S.versionsFailed = false;
+    S.versionsError = "";
+    const id = S.current.id;
+    const seq = S.drawerSeq;
+    try {
+      const [versions, builds] = await Promise.all([
+        api("/api/projects/" + encodeURIComponent(id) + "/versions"),
+        api("/api/projects/" + encodeURIComponent(id) + "/builds"),
+      ]);
+      if (seq !== S.drawerSeq || !S.current || S.current.id !== id) return;
+      S.versions = versions;
+      S.builds = builds;
+      if (S.currentTab === "versions") renderVersions();
+    } catch (err) {
+      if (seq !== S.drawerSeq || !S.current || S.current.id !== id) return;
+      S.versions = null;
+      S.versionsFailed = true;
+      S.versionsError = err.message;
+      toast("加载版本信息失败：" + err.message, "err");
+      if (S.currentTab === "versions") renderVersions();
+    } finally {
+      if (seq === S.drawerSeq) S.versionsLoading = false;
+    }
+  }
+
+async function runBuild(script) {
     if (!S.current) return;
     const box = $("buildLogBox");
     box.innerHTML = "<div class='build-log'></div><div class='build-status'>构建中…</div>";

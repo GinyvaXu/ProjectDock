@@ -287,6 +287,16 @@ input, select, textarea { font-family: inherit; font-size: 14px; color: var(--te
 
 /* 版本与构建 */
 .ver-block { margin-bottom: 18px; }
+.ver-block.collapsible { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 10px 14px; }
+.ver-block.collapsible > .ver-head { cursor: pointer; user-select: none; margin-bottom: 0; justify-content: flex-start; gap: 8px; min-height: 26px; }
+.ver-block.collapsible > .ver-head:hover h4 { color: var(--accent); }
+.ver-block.collapsible > .ver-head .caret { font-size: 10px; color: var(--text-3); transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1); }
+.ver-block.collapsible.collapsed > .ver-head .caret { transform: rotate(-90deg); }
+.ver-block.collapsible > .ver-body { display: grid; grid-template-rows: 1fr; opacity: 1; transition: grid-template-rows 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease; }
+.ver-block.collapsible.collapsed > .ver-body { grid-template-rows: 0fr; opacity: 0; }
+.ver-block.collapsible > .ver-body > .ver-body-inner { overflow: hidden; }
+.ver-block.collapsible:not(.collapsed) > .ver-body > .ver-body-inner { padding-top: 10px; }
+
 .ver-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .ver-head h4 { font-size: 13px; color: var(--text-3); font-weight: 600; }
 .changelog { display: flex; flex-direction: column; gap: 12px; }

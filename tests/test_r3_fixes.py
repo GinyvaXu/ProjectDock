@@ -133,3 +133,40 @@ def test_frontend_hidden_rule_present():
     text = css.read_text(encoding="utf-8")
     assert "[hidden]" in text
     assert "display: none !important" in text
+
+
+def test_agent_task_injects_system_context(tmp_path, monkeypatch):
+    """回归：ProjectDock 上下文应经 --append-system-prompt 注入，任务消息只含用户指令。"""
+    captured = {}
+
+    async def fake_stream(emit, cmd, cwd):
+        captured["cmd"] = cmd
+        captured["cwd"] = cwd
+        return 0
+
+    async def fake_simple(cmd, cwd):
+        return 0, ""
+
+    import projectdock.agent as agent_mod
+
+    monkeypatch.setattr(agent_mod, "stream_command", fake_stream)
+    monkeypatch.setattr(agent_mod, "run_simple", fake_simple)
+    monkeypatch.setattr(agent_mod.backup, "make_backup", lambda p: None)
+    monkeypatch.setattr(agent_mod, "ailog", types.SimpleNamespace(write_log=lambda *a, **k: None))
+    state = types.SimpleNamespace(settings=types.SimpleNamespace(backup=False))
+
+    async def run():
+        await agent_mod.run_agent_task(
+            state, tmp_path, "pi", "帮我归档构建产物",
+            lambda x: None, context="你是 ProjectDock 助手\n管理规范：归档不动 CHANGELOG",
+        )
+
+    asyncio.run(run())
+    assert captured["cwd"] == str(tmp_path)
+    assert "--append-system-prompt" in captured["cmd"]
+    i = captured["cmd"].index("--append-system-prompt")
+    ctx_file = Path(captured["cmd"][i + 1])
+    assert ctx_file.suffix == ".md" and "tmp" in ctx_file.name.lower()
+    assert "帮我归档构建产物" in captured["cmd"]
+    # 临时上下文文件在任务结束后被清理（finally）
+    assert not ctx_file.exists()

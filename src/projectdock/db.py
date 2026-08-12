@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 from datetime import datetime
 from pathlib import Path
+
+_DB_LOCK = threading.RLock()
+
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS projects (
@@ -29,91 +33,102 @@ CREATE TABLE IF NOT EXISTS project_types (
 
 
 def now() -> str:
-    return datetime.now().isoformat(timespec="seconds")
+    with _DB_LOCK:
+        return datetime.now().isoformat(timespec="seconds")
 
 
 def connect(db_path: Path) -> sqlite3.Connection:
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(db_path), check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.executescript(SCHEMA)
-    _migrate(conn)
-    conn.commit()
-    return conn
+    with _DB_LOCK:
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        conn.executescript(SCHEMA)
+        _migrate(conn)
+        conn.commit()
+        return conn
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
-    """轻量迁移：为旧库补充新增列。"""
-    cols = {row[1] for row in conn.execute("PRAGMA table_info(projects)").fetchall()}
-    if "excluded" not in cols:
-        conn.execute("ALTER TABLE projects ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0")
+    with _DB_LOCK:
+        """轻量迁移：为旧库补充新增列。"""
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(projects)").fetchall()}
+        if "excluded" not in cols:
+            conn.execute("ALTER TABLE projects ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0")
 
 
 def upsert_project(conn, project_id: str, name: str, ptype: str, path: str,
                    description: str = "", imported: bool = False, excluded: bool = False) -> None:
-    ts = now()
+    with _DB_LOCK:
+        ts = now()
     # 同路径被其它 id 占用（文件夹重命名/移动）：先清除旧注册，避免 UNIQUE(path) 冲突
-    conn.execute("DELETE FROM projects WHERE path = ? AND id <> ?", (str(path), project_id))
-    conn.execute(
-        """INSERT INTO projects (id, name, type, path, description, created_at, updated_at, imported, excluded)
+        conn.execute("DELETE FROM projects WHERE path = ? AND id <> ?", (str(path), project_id))
+        conn.execute(
+            """INSERT INTO projects (id, name, type, path, description, created_at, updated_at, imported, excluded)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET
-             name = excluded.name,
-             type = excluded.type,
-             path = excluded.path,
-             description = excluded.description,
-             updated_at = excluded.updated_at,
-             imported = excluded.imported,
-             excluded = excluded.excluded""",
-        (project_id, name, ptype, str(path), description, ts, ts, 1 if imported else 0, 1 if excluded else 0),
-    )
-    conn.commit()
+               name = excluded.name,
+               type = excluded.type,
+               path = excluded.path,
+               description = excluded.description,
+               updated_at = excluded.updated_at,
+               imported = excluded.imported,
+               excluded = excluded.excluded""",
+            (project_id, name, ptype, str(path), description, ts, ts, 1 if imported else 0, 1 if excluded else 0),
+        )
+        conn.commit()
 
 
 def get_project(conn, project_id: str) -> dict | None:
-    row = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
-    return dict(row) if row else None
+    with _DB_LOCK:
+        row = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+        return dict(row) if row else None
 
 
 def list_projects(conn) -> list[dict]:
-    rows = conn.execute("SELECT * FROM projects ORDER BY created_at DESC").fetchall()
-    return [dict(r) for r in rows]
+    with _DB_LOCK:
+        rows = conn.execute("SELECT * FROM projects ORDER BY created_at DESC").fetchall()
+        return [dict(r) for r in rows]
 
 
 def delete_project(conn, project_id: str) -> None:
-    """移除管理：标记 excluded=1，文件夹本身不动。重新导入即可恢复。"""
-    conn.execute("UPDATE projects SET excluded = 1, updated_at = ? WHERE id = ?", (now(), project_id))
-    conn.commit()
+    with _DB_LOCK:
+        """移除管理：标记 excluded=1，文件夹本身不动。重新导入即可恢复。"""
+        conn.execute("UPDATE projects SET excluded = 1, updated_at = ? WHERE id = ?", (now(), project_id))
+        conn.commit()
 
 
 def list_custom_types(conn) -> list[dict]:
-    rows = conn.execute("SELECT * FROM project_types ORDER BY name").fetchall()
-    return [dict(r) for r in rows]
+    with _DB_LOCK:
+        rows = conn.execute("SELECT * FROM project_types ORDER BY name").fetchall()
+        return [dict(r) for r in rows]
 
 
 def get_custom_type(conn, name: str) -> dict | None:
-    row = conn.execute("SELECT * FROM project_types WHERE name = ?", (name,)).fetchone()
-    return dict(row) if row else None
+    with _DB_LOCK:
+        row = conn.execute("SELECT * FROM project_types WHERE name = ?", (name,)).fetchone()
+        return dict(row) if row else None
 
 
 def upsert_custom_type(conn, name: str, label: str, description: str,
                        dirs: list[str], files: dict[str, str], git: bool) -> None:
-    import json
+    with _DB_LOCK:
+        import json
 
-    conn.execute(
+        conn.execute(
         """INSERT INTO project_types (name, label, description, dirs, files, git)
            VALUES (?, ?, ?, ?, ?, ?)
            ON CONFLICT(name) DO UPDATE SET
-             label = excluded.label,
-             description = excluded.description,
-             dirs = excluded.dirs,
-             files = excluded.files,
-             git = excluded.git""",
-        (name, label, description, json.dumps(dirs, ensure_ascii=False), json.dumps(files, ensure_ascii=False), 1 if git else 0),
-    )
-    conn.commit()
+               label = excluded.label,
+               description = excluded.description,
+               dirs = excluded.dirs,
+               files = excluded.files,
+               git = excluded.git""",
+            (name, label, description, json.dumps(dirs, ensure_ascii=False), json.dumps(files, ensure_ascii=False), 1 if git else 0),
+        )
+        conn.commit()
 
 
 def delete_custom_type(conn, name: str) -> None:
-    conn.execute("DELETE FROM project_types WHERE name = ?", (name,))
-    conn.commit()
+    with _DB_LOCK:
+        conn.execute("DELETE FROM project_types WHERE name = ?", (name,))
+        conn.commit()

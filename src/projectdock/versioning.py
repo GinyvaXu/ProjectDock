@@ -109,18 +109,25 @@ def list_build_artifacts(project_path: Path, limit_versions: int = 10) -> dict:
             if latest_version is None:
                 latest_version = vdir.name
             entry = {"name": vdir.name, "path": str(vdir), "artifacts": [], "has_src": (vdir / "src").is_dir()}
+            seen_art: set[tuple] = set()
             for sub in ("dist", "installer"):
                 subdir = vdir / sub
                 if subdir.is_dir():
                     for f in sorted(subdir.iterdir()):
                         if _version_artifact(f):
-                            entry["artifacts"].append(_entry_stat(f, "versions", vdir.name))
+                            e = _entry_stat(f, "versions", vdir.name)
+                            key = (e["name"], e["size"])
+                            if key in seen_art:
+                                continue
+                            seen_art.add(key)
+                            entry["artifacts"].append(e)
             result["versions"].append(entry)
     newest_archived_mtime = 0.0
     for v in result["versions"]:
         for f in v["artifacts"]:
             newest_archived_mtime = max(newest_archived_mtime, f["mtime"] or 0.0)
     root_dist_newer = False
+    seen_root: set[tuple] = set()
     for sub in ROOT_ARTIFACT_DIRS:
         subdir = project_path / sub
         if not subdir.is_dir():
@@ -132,6 +139,10 @@ def list_build_artifacts(project_path: Path, limit_versions: int = 10) -> dict:
             if sub != "dist" and not _is_build_binary(f):
                 continue
             e = _entry_stat(f, sub, None)
+            key = (e["name"], e["size"])
+            if key in seen_root:
+                continue
+            seen_root.add(key)
             result["dist"].append(e)
             if (e["mtime"] or 0.0) > newest_archived_mtime:
                 root_dist_newer = True
