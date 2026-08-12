@@ -5,6 +5,7 @@ import json
 import os
 import queue as queue_module
 import subprocess
+import sys
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
@@ -22,7 +23,21 @@ from .models import (AGENT_NAMES, PROJECT_TYPES, THEMES, AgentRun, BuildRun,
                      ReleaseRun, SettingsUpdate)
 from .state import AppState
 
-WEB_DIR = Path(__file__).resolve().parents[2] / "web"
+def _locate_web_dir() -> Path:
+    """定位前端目录：兼容源码运行与 PyInstaller 冻结模式（onedir 下前端在 _internal/web）。"""
+    candidates = []
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidates.append(Path(meipass) / "web")
+    candidates.append(Path(__file__).resolve().parents[2] / "web")
+    candidates.append(Path(sys.executable).resolve().parent / "web")
+    for cand in candidates:
+        if (cand / "index.html").is_file():
+            return cand
+    return candidates[0]
+
+
+WEB_DIR = _locate_web_dir()
 
 
 def create_app(state: AppState) -> FastAPI:

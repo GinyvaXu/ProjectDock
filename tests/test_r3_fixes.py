@@ -112,3 +112,12 @@ def test_remove_project_stays_hidden(client):
     assert resp.status_code == 200
     ids = [p["id"] for p in client.get("/api/projects").json()]
     assert created["id"] not in ids
+
+
+
+def test_root_serves_frontend(client):
+    """GET / 应返回前端 HTML 而非“前端目录缺失”回退。"""
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "<title>ProjectDock" in resp.text
+    assert "前端目录缺失" not in resp.text
