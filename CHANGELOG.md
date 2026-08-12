@@ -21,3 +21,4 @@
 - 勾选 GitHub 但关闭预设时自动 git init + 首次提交后再建仓
 - AI 命令无法启动时输出失败任务报告；任务注册表自动清理防内存累积
 - 备份改用 os.walk 剪枝（跳过 .venv/node_modules/versions 等大目录）；未注册项目类型推断
+- 修复 UI 无法交互：hidden 属性被 display:flex 覆盖，空状态/模态遮罩始终显示并拦截点击；新增 [hidden]{display:none!important} 并限定 .empty 于主区

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import types
+from pathlib import Path
 
 import pytest
 
@@ -121,3 +122,12 @@ def test_root_serves_frontend(client):
     assert resp.status_code == 200
     assert "<title>ProjectDock" in resp.text
     assert "前端目录缺失" not in resp.text
+
+
+
+def test_frontend_hidden_rule_present():
+    """防回归：hidden 属性必须优先于 display:flex，否则空状态/模态遮罩会拦截交互。"""
+    css = Path(__file__).resolve().parents[1] / "web" / "css" / "style.css"
+    text = css.read_text(encoding="utf-8")
+    assert "[hidden]" in text
+    assert "display: none !important" in text

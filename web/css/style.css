@@ -44,6 +44,8 @@
 
 /* ============ 基础 ============ */
 * { margin: 0; padding: 0; box-sizing: border-box; }
+/* hidden 属性必须优先：display:flex 等作者样式会覆盖 UA 的 [hidden]{display:none}，导致空状态/模态遮罩始终显示并拦截点击 */
+[hidden] { display: none !important; }
 html, body { height: 100%; }
 body {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei UI", "Segoe UI", sans-serif;
@@ -111,7 +113,7 @@ input, select, textarea { font-family: inherit; font-size: 14px; color: var(--te
 .app-version { font-size: 11px; color: var(--text-3); padding: 8px 12px 0; }
 
 /* 主区 */
-.main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
 .toolbar {
   display: flex; align-items: center; gap: 14px;
   padding: 16px 24px;

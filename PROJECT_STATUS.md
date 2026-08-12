@@ -10,7 +10,7 @@
 3. 版本与构建展示（读取本地约定文件 VERSION / CHANGELOG / versions/ / dist/，一键构建入口）
 4. 发布向导（版本号 → 更新日志 → 构建脚本 → git tag → 提交，构建失败自动中止并报告）
 5. AI 项目助手（App 内嵌聊天，claude / pi 可切换，默认 pi；全自动执行 + 任务前备份 + 任务后操作/Git 报告）
-6. iOS 风格 UI（毛玻璃 / 弹簧动画 / 深色浅色跟随系统，面板切换淡入动画）
+6. iOS 风格 UI（毛玻璃 / 弹簧动画 / 深色浅色跟随系统，面板切换淡入动画）；修复 hidden 与 display:flex 冲突导致的界面被遮罩锁定（空状态层/模态遮罩不再拦截交互）
 7. 概览页 Git 状态面板（最新提交 / 工作区变更 / 一键刷新）、搜索空状态区分、发布向导版本快速递增
 8. 测试与质量门禁：65 个用例通过，覆盖率 83.17%（门槛 80%）
 9. 构建脚本：build_debug.py / build_exe.py（PyInstaller → versions/vX.Y.Z/dist/），debug/release 均已构建验证，windowed 版崩溃已修复（devnull + crash.log）
