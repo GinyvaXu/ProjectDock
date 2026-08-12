@@ -58,14 +58,22 @@ def _software(title: str, description: str, dirs: str, files: str, git: bool) ->
 3. 任务执行前先做安全备份（快照进 versions/backups/）
 4. 每轮迭代结束交付报告：改动清单 / 构建产物路径 / 测试建议
 
+## 确认策略（强制）
+- 以下操作必须先获得**用户明确同意**才能执行：推送 GitHub（push）/ 删除文件（delete）/ 创建 GitHub 仓库（github_create）/ 发布 Release（release）/ 归档移动构建产物（archive）
+- 执行上述操作时：`projectdock-cli` 对应命令要求加 `--confirm` 参数；外部 agent 不得擅自 push / 删除 / 建仓
+- 用户可在 ProjectDock 设置中逐项关闭确认（关闭后该操作可自动执行），但删除文件类操作始终建议先备份
+
 ## AI 操作日志（强制）
 - 每个任务完成后必须主动写 AI 操作日志到 `logs/ai/`（JSON），位置与格式见下；**不写日志视为未完成任务**
 - 要素：ts / agent / action / result / summary / details / git / backup
 - 快捷方式：`python -m projectdock.cli log <项目名> --agent <你的名字> --action "..." --result done --summary "..."`
 
-## 与 ProjectDock 对接
-- 查看契约与当前状态：`python -m projectdock.cli context <项目名>`
-- 查看 AI 操作日志：`python -m projectdock.cli logs <项目名>`
+## 与 ProjectDock 对接（projectdock-cli）
+- 查看契约与当前状态：`python -m projectdock.cli context <项目名>`；查看 AI 日志：`python -m projectdock.cli logs <项目名>`
+- 新建项目：`python -m projectdock.cli init <名称> --type <类型> [--no-git]`
+- 构建并归档：`python -m projectdock.cli build <项目名> [--script 脚本] [--archive]`
+- 发布版本：`python -m projectdock.cli release <项目名> --version X.Y.Z [--changelog "..."] [--build 脚本] [--push] [--confirm]`
+- 归档根目录产物：`python -m projectdock.cli archive <项目名> [--version X.Y.Z] [--confirm]`
 - 若上述命令不可用：按本契约手动维护文件，并把日志 JSON 写到 logs/ai/ 即可
 
 ## 禁止事项
@@ -92,6 +100,9 @@ def _generic(title: str, description: str, dirs: str, files: str) -> str:
 - 单 main 分支直接开发；提交前缀：feat: / fix: / docs: / chore:
 - **不主动 push**；推送由用户明确要求后进行
 - versions/、dist/、logs/ 仅本地保留、不上传
+
+## 确认策略（强制）
+- 推送 GitHub / 删除文件 / 创建 GitHub 仓库 / 发布 Release / 归档移动产物前必须先获得用户明确同意（CLI 加 `--confirm`）
 
 ## AI 操作日志（强制）
 - 每个任务完成后必须主动写 AI 操作日志到 `logs/ai/`（JSON：ts / agent / action / result / summary / details / git / backup）

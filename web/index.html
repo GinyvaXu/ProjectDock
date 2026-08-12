@@ -125,6 +125,15 @@
         <label class="check"><input type="checkbox" name="github_auto" checked><span>新建项目自动创建 GitHub 仓库并推送</span></label>
         <label class="field"><span>仓库可见性</span><select name="github_visibility"><option value="private">私有</option><option value="public">公开</option></select></label>
         <label class="check"><input type="checkbox" name="backup" checked><span>AI 任务 / 发布前自动备份（zip 快照到 versions/backups/）</span></label>
+        <label class="field"><span>确认策略（勾选的操作在执行前需要用户确认；AI agent 必须先征得同意）</span>
+          <div class="policy-editor">
+            <label class="check"><input type="checkbox" name="policy_push" checked><span>推送 GitHub</span></label>
+            <label class="check"><input type="checkbox" name="policy_delete" checked><span>删除文件</span></label>
+            <label class="check"><input type="checkbox" name="policy_github_create" checked><span>创建 GitHub 仓库</span></label>
+            <label class="check"><input type="checkbox" name="policy_release" checked><span>发布 Release</span></label>
+            <label class="check"><input type="checkbox" name="policy_archive" checked><span>归档移动构建产物</span></label>
+          </div>
+        </label>
         <label class="field"><span>类型菜单模板（勾选该类型显示的菜单；软件类含版本/构建，文稿类显示文稿版本）</span><div class="type-tabs-editor" id="typeTabsEditor"></div></label>
         <footer class="modal-foot">
           <button type="button" class="btn" id="btnManageTypes">自定义类型</button>

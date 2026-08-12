@@ -1,7 +1,7 @@
 # ProjectDock 项目状态
 
-- 版本：0.2.0（AI 闭环 UI 化 + 类型模板 + 总控台）
-- 状态：✅ v0.1 核心功能 + v0.2 阶段 1/2 完成
+- 版本：0.3.0（CLI 工具链 + 确认策略）
+- 状态：✅ v0.1 核心功能 + v0.2 阶段 1/2/3 完成
 - GitHub：https://github.com/GinyvaXu/ProjectDock（私有，main 分支）
 
 ## v0.1.0 完成项
@@ -39,7 +39,14 @@
 5. 新端点：/api/console、/api/jobs、/api/agent/batch、documents?scope=all、/api/types tabs
 6. 测试：99 个用例通过，覆盖率 85.00%（门槛 80%）
 
-## 待办（v0.2+）
-- 模板导入/导出、GitHub Releases 拉取
+## v0.3.0 完成项（阶段 3）
+1. projectdock-cli 工具级扩展：init / build / release / archive（含自动 AI 日志）
+2. 确认策略：设置面板勾选需确认操作（push/删除/建仓/Release/归档），CLI 未带 --confirm 拒绝执行
+3. 契约与 agent 提示词注入确认策略；Settings/API 持久化 confirm_policy
+4. 测试：111 个用例通过，覆盖率 85.36%（门槛 80%）
+
+## 待办（v0.3 后续）
+- 自动更新（检查 GitHub 新版本 → 下载 → 安装）、GitHub Releases 拉取
+- 模板导入/导出、多根目录、托盘、全局快捷键
 - 自动更新（检查 GitHub 新版本 → 下载 → 安装）
 - 多根目录、托盘、全局快捷键

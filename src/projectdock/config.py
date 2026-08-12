@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 
 APP_NAME = "ProjectDock"
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.3.0"
 
 
 def app_data_dir() -> Path:
@@ -42,6 +42,8 @@ class Settings:
         "github_visibility": "private",
         "backup": True,
         "type_tabs": {},
+        "confirm_policy": {"push": True, "delete": True, "github_create": True,
+                           "release": True, "archive": True},
     }
 
     def __init__(self, data_dir: Path | None = None):
@@ -90,6 +92,18 @@ class Settings:
         value = self._data.get("type_tabs", {})
         return value if isinstance(value, dict) else {}
 
+    @property
+    def confirm_policy(self) -> dict:
+        value = self._data.get("confirm_policy", {})
+        defaults = dict(self.DEFAULTS["confirm_policy"])
+        if isinstance(value, dict):
+            defaults.update({k: bool(v) for k, v in value.items()})
+        return defaults
+
+    def confirm_required(self, key: str) -> bool:
+        """按确认策略判断某类操作是否需要用户确认（未配置默认按需确认）。"""
+        return bool(self.confirm_policy.get(key, True))
+
     def as_dict(self) -> dict:
         return {
             "root": str(self.root),
@@ -99,6 +113,7 @@ class Settings:
             "github_visibility": self.github_visibility,
             "backup": self.backup,
             "type_tabs": self.type_tabs,
+            "confirm_policy": self.confirm_policy,
         }
 
     def update(self, **kwargs) -> dict:
@@ -113,6 +128,11 @@ class Settings:
                 self._data[key] = bool(value)
             elif key == "type_tabs":
                 self._data[key] = value if isinstance(value, dict) else {}
+            elif key == "confirm_policy":
+                if isinstance(value, dict):
+                    merged = dict(self.DEFAULTS["confirm_policy"])
+                    merged.update({k: bool(v) for k, v in value.items()})
+                    self._data[key] = merged
         self.save()
         return self.as_dict()
 

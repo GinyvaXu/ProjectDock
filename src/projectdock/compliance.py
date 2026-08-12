@@ -247,16 +247,17 @@ def _execute_fix(project_path: Path, ptype: str, title: str, description: str,
         ok = presets._git_init_commit(project_path, None)
         return {"ok": ok, "message": "Git 初始化并完成首次提交" if ok else "Git 初始化失败（请检查 git 是否可用）"}
     if key == "archive_dist":
-        return _archive_root_dist(project_path)
+        return archive_root_dist(project_path)
     return {"ok": False, "message": f"未知动作：{key}"}
 
 
-def _archive_root_dist(project_path: Path) -> dict:
+def archive_root_dist(project_path: Path, version: str | None = None) -> dict:
+    """把根目录 dist/ 的构建产物移动到 versions/vX.Y.Z/dist/（version 缺省读 VERSION）。"""
     dist_dir = project_path / "dist"
     candidates = detect_build_artifacts(dist_dir)
     if not candidates:
         return {"ok": True, "message": "根目录 dist/ 没有需要归档的构建产物"}
-    version = read_version(project_path) or "0.1.0"
+    version = version or read_version(project_path) or "0.1.0"
     target = project_path / "versions" / f"v{version}" / "dist"
     target.mkdir(parents=True, exist_ok=True)
     moved, skipped, failed = [], [], []

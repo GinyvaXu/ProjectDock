@@ -42,13 +42,29 @@ def resolve_command(cmd: list[str]) -> list[str]:
     return [exe, *cmd[1:]]
 
 
-def system_prompt(project_name: str, project_path: str, type_info: dict | None = None) -> str:
-    """给 agent 的项目上下文前缀；含类型结构约定（与管理端约定一致）。"""
+POLICY_LABELS = {
+    "push": "推送 GitHub",
+    "delete": "删除文件",
+    "github_create": "创建 GitHub 仓库",
+    "release": "发布 Release",
+    "archive": "归档移动构建产物",
+}
+
+
+def system_prompt(project_name: str, project_path: str, type_info: dict | None = None,
+                  confirm_policy: dict | None = None) -> str:
+    """给 agent 的项目上下文前缀；含类型结构约定与确认策略（与管理端约定一致）。"""
     lines = [
         "你是 ProjectDock 项目坞内置的项目管理助手。",
         f"当前正在管理的项目：{project_name}（目录：{project_path}）。",
         "请在该项目目录内，按用户要求执行文件操作、代码修改、版本管理等任务；不要离开当前项目目录做无关操作。",
     ]
+    if confirm_policy:
+        need = [POLICY_LABELS.get(k, k) for k, v in (confirm_policy or {}).items() if v]
+        if need:
+            lines.append("确认策略：以下操作必须先向用户确认并获得明确同意才能执行——" + "、".join(need) + "。")
+        else:
+            lines.append("确认策略：所有高危操作均允许自动执行（用户已在设置中关闭确认）。")
     if type_info:
         structure = []
         if type_info.get("dirs"):

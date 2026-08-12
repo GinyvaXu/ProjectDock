@@ -86,3 +86,4 @@ class SettingsUpdate(BaseModel):
     github_visibility: str | None = None
     backup: bool | None = None
     type_tabs: dict[str, list[str]] | None = None
+    confirm_policy: dict[str, bool] | None = None

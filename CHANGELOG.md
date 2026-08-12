@@ -2,6 +2,19 @@
 
 本文件记录 ProjectDock 的版本迭代。格式：语义化版本 + 日期 + 变更分组。
 
+## [0.3.0] - 2026-08-12
+### Added（v0.2 阶段 3：CLI 工具链 + 确认策略）
+- projectdock-cli 新增 init / build / release / archive 子命令（供外部 AI agent 对接）
+- init：按内置/自定义类型预设新建项目（骨架 + git + 契约 AGENTS.md），并注册到 ProjectDock
+- build：运行项目构建脚本（默认取优先级最高），--archive 构建成功后把根目录 dist/ 产物归档到 versions/vX.Y.Z/dist/
+- release：一键发布（备份 → 版本 → 日志 → 测试门禁 → 构建 → git tag → push/GitHub Release），复用发布向导引擎
+- archive：把根目录 dist/ 构建产物归档到版本目录（支持 --version 覆盖）
+- 确认策略（Q6）：设置面板新增「确认策略」，默认 push / 删除文件 / 创建 GitHub 仓库 / 发布 Release / 归档移动产物均需用户确认；CLI 对应操作要求 --confirm，未确认拒绝执行
+- 契约 AGENTS.md 新增「确认策略」章节与 CLI 工具用法；内置 agent 提示词注入确认策略
+- Settings 持久化 confirm_policy；API /api/settings 支持读写
+- 测试 111 个通过，覆盖率 85.36%（门槛 80%）
+- Dogfood：ProjectDock 自身契约同步确认策略，本轮迭代继续走契约流程
+
 ## [0.2.0] - 2026-08-12
 ### Added（v0.2 阶段 2：AI 闭环 UI 化 + 类型模板 + 总控台）
 - 主页总控台：跨项目聚合 AI 操作时间线 / 运行中任务 / 项目合规与版本状态 / 失败计数，卡片式 iOS 风格布局

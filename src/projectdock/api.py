@@ -102,6 +102,7 @@ def create_app(state: AppState) -> FastAPI:
             root=payload.root, agent=payload.agent, theme=payload.theme,
             github_auto=payload.github_auto, github_visibility=payload.github_visibility,
             backup=payload.backup, type_tabs=payload.type_tabs,
+            confirm_policy=payload.confirm_policy,
         )
 
     @api.get("/presets")
@@ -445,7 +446,7 @@ def create_app(state: AppState) -> FastAPI:
                 jobs.append({"project_id": pid, "job_id": None, "error": "项目不存在"})
                 continue
             spec = _type_spec(proj.get("type", "其他"))
-            prompt = agent_mod.system_prompt(proj["name"], proj["path"], spec) + "\n\n用户要求：" + payload.prompt
+            prompt = agent_mod.system_prompt(proj["name"], proj["path"], spec, state.settings.confirm_policy) + "\n\n用户要求：" + payload.prompt
             job = state.jobs.start_task(
                 f"批量·{proj['name']}", lambda emit, pj=Path(proj["path"]), pr=prompt, ag=agent:
                 agent_mod.run_agent_task(state, pj, ag, pr, emit))
@@ -461,7 +462,7 @@ def create_app(state: AppState) -> FastAPI:
         proj = _resolve_project(payload.project_id)
         agent = payload.agent if payload.agent in AGENT_NAMES else state.settings.agent
         spec = _type_spec(proj.get("type", "其他"))
-        prompt = agent_mod.system_prompt(proj["name"], proj["path"], spec) + "\n\n用户要求：" + payload.prompt
+        prompt = agent_mod.system_prompt(proj["name"], proj["path"], spec, state.settings.confirm_policy) + "\n\n用户要求：" + payload.prompt
         job = state.jobs.start_task(
             f"AI · {AGENTS[agent]['label']}",
             lambda emit: agent_mod.run_agent_task(state, Path(proj["path"]), agent, prompt, emit),

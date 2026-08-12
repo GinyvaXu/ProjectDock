@@ -963,6 +963,11 @@
     form.elements.github_auto.checked = !!S.settings.github_auto;
     form.elements.github_visibility.value = S.settings.github_visibility || "private";
     form.elements.backup.checked = !!S.settings.backup;
+    const policy = S.settings.confirm_policy || {};
+    ["push", "delete", "github_create", "release", "archive"].forEach((k) => {
+      const el = form.elements["policy_" + k];
+      if (el) el.checked = policy[k] !== false;
+    });
     renderTypeTabsEditor();
     openModal("settings");
   }
@@ -981,6 +986,10 @@
       });
       if (checked.length) typeTabs[t.name] = checked;
     });
+    const confirmPolicy = {};
+    ["push", "delete", "github_create", "release", "archive"].forEach((k) => {
+      confirmPolicy[k] = !!form.elements["policy_" + k].checked;
+    });
     try {
       S.settings = await api("/api/settings", {
         method: "PUT",
@@ -992,6 +1001,7 @@
           github_visibility: form.elements.github_visibility.value,
           backup: form.elements.backup.checked,
           type_tabs: typeTabs,
+          confirm_policy: confirmPolicy,
         },
       });
       applyTheme(S.settings.theme);
