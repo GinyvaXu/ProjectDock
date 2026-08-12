@@ -19,6 +19,8 @@
     currentTab: "overview",
     versions: null,
     builds: [],
+    logoRev: 0,
+    _iconChoice: null,
     chatRunning: false,
     view: "grid",
     console: null,
@@ -34,7 +36,7 @@
     const emoji = "<span class='logo-fallback'>" + typeIcon(p) + "</span>";
     if (!p.has_logo) return emoji;
     return "<span class='logo-wrap'>" + emoji +
-      "<img class='proj-logo' src='/api/projects/" + encodeURIComponent(p.id) + "/logo' alt='' onerror='this.remove()'></span>";
+      "<img class='proj-logo' src='/api/projects/" + encodeURIComponent(p.id) + "/logo?v=" + (S.logoRev || 0) + "' alt='' onerror='this.remove()'></span>";
   }
 
   /* ============ 初始化 ============ */
@@ -91,12 +93,13 @@
     if (q) {
       list = list.filter((p) => (p.name + " " + p.title + " " + p.description + " " + p.type).toLowerCase().indexOf(q) >= 0);
     }
-    return list;
+    return list.slice().sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
   }
 
   function cardHTML(p) {
-    return "<div class='card' data-id='" + esc(p.id) + "' style='opacity:0'>" +
+    return "<div class='card" + (p.pinned ? " pinned-card" : "") + "' data-id='" + esc(p.id) + "' style='opacity:0'>" +
       "<div class='card-head'>" +
+        "<button class='pin-btn" + (p.pinned ? " on" : "") + "' data-pin='" + esc(p.id) + "' title='" + (p.pinned ? "取消置顶" : "置顶") + "'>📌</button>" +
         "<span class='card-logo type-" + esc(p.type) + "'>" + logoHTML(p) + "</span>" +
         "<div class='card-head-text'>" +
           "<h3 class='card-title'>" + esc(p.title) + "</h3>" +
@@ -132,7 +135,9 @@
       const el = document.createElement("div");
       el.innerHTML = cardHTML(p);
       const card = el.firstElementChild;
-      card.addEventListener("click", () => openDrawer(p.id));
+      card.addEventListener("click", (ev) => { if (ev.target.closest(".pin-btn")) return; openDrawer(p.id); });
+      const pinBtn = card.querySelector(".pin-btn");
+      if (pinBtn) pinBtn.addEventListener("click", (ev) => { ev.stopPropagation(); togglePin(p.id, pinBtn); });
       frag.appendChild(card);
       Spring.enter(card, { delay: Math.min(i * 40, 320), distance: 22 });
     });
@@ -251,6 +256,8 @@
         "<button class='btn btn-sm' data-act='copy'>复制路径</button>" +
         "<button class='btn btn-sm' data-act='init'>预设初始化</button>" +
         "<button class='btn btn-sm' data-act='compliance'>合规检查</button>" +
+        "<button class='btn btn-sm' data-act='icon'>设置图标</button>" +
+        "<button class='btn btn-sm" + (proj.pinned ? " btn-pinned" : "") + "' data-act='pin'>" + (proj.pinned ? "取消置顶" : "置顶") + "</button>" +
         (proj.imported ? "" : "<button class='btn btn-sm btn-danger' data-act='remove'>移除管理</button>") +
       "</div>";
     $("panel-overview").querySelectorAll("[data-act]").forEach((btn) => {
@@ -416,6 +423,10 @@
       } catch (err) { toast(err.message, "err"); }
     } else if (act === "compliance") {
       showTab("compliance");
+    } else if (act === "icon") {
+      openIconModal();
+    } else if (act === "pin") {
+      togglePin(id, null, true);
     } else if (act === "remove") {
       if (!window.confirm("仅从 ProjectDock 移除管理（不会删除文件夹），继续？")) return;
       try {
@@ -424,6 +435,84 @@
         closeDrawer();
         await refresh();
       } catch (err) { toast(err.message, "err"); }
+    }
+  }
+
+  async function togglePin(id, btn, fromOverview) {
+    try {
+      const res = await api("/api/projects/" + encodeURIComponent(id) + "/pin", { method: "POST" });
+      const p = S.projects.find((x) => x.id === id);
+      if (p) p.pinned = res.pinned;
+      if (btn) {
+        btn.classList.toggle("on", res.pinned);
+        btn.title = res.pinned ? "取消置顶" : "置顶";
+      }
+      if (fromOverview) {
+        const meta = document.querySelector('#panel-overview [data-act="pin"]');
+        if (meta) {
+          meta.textContent = res.pinned ? "取消置顶" : "置顶";
+          meta.classList.toggle("btn-pinned", res.pinned);
+        }
+      }
+      renderGrid();
+      toast(res.pinned ? "已置顶" : "已取消置顶");
+    } catch (err) { toast(err.message, "err"); }
+  }
+
+  const ICON_SYMBOLS = [
+    ["播放", 0], ["地球", 1], ["手柄", 2], ["图表", 3], ["文档", 4], ["终端", 5],
+    ["菱形", 6], ["星星", 7], ["齿轮", 8], ["书本", 9], ["相机", 10], ["音符", 11],
+  ];
+
+  function openIconModal() {
+    if (!S.current) return;
+    const wrap = $("iconSymbols");
+    wrap.innerHTML = ICON_SYMBOLS.map((pair) =>
+      "<button class='icon-sym" + (S._iconChoice && S._iconChoice.symbol === pair[1] ? " active" : "") + "' data-sym='" + pair[1] + "'>" + pair[0] + "</button>"
+    ).join("");
+    const prev = $("iconPreview");
+    if (S.current.has_logo) {
+      prev.innerHTML = "<img src='/api/projects/" + encodeURIComponent(S.current.id) + "/logo?v=" + (S.logoRev || 0) + "' alt=''>";
+    } else {
+      prev.innerHTML = logoHTML(S.current);
+    }
+    S._iconChoice = { mode: "auto", symbol: null };
+    $("btnIconApply").disabled = false;
+    openModal("icon");
+  }
+
+  function setIconChoice(choice) {
+    S._iconChoice = choice;
+    $("btnIconApply").disabled = false;
+    document.querySelectorAll("#iconSymbols .icon-sym").forEach((b) => {
+      const on = choice.symbol !== undefined && choice.symbol !== null && parseInt(b.dataset.sym, 10) === choice.symbol;
+      b.classList.toggle("active", on);
+    });
+  }
+
+  async function applyIcon() {
+    if (!S.current || !S._iconChoice) return;
+    const btn = $("btnIconApply");
+    const origText = btn ? btn.textContent : "";
+    if (btn) { btn.disabled = true; btn.textContent = "生成中…"; }
+    toast(S._iconChoice.mode === "upload" ? "正在保存图标…" : "正在生成图标…");
+    try {
+      await api("/api/projects/" + encodeURIComponent(S.current.id) + "/icon", {
+        method: "POST", body: S._iconChoice,
+      });
+      S.logoRev = (S.logoRev || 0) + 1;
+      const proj = S.projects.find((x) => x.id === S.current.id);
+      if (proj) proj.has_logo = true;
+      if (S.current) S.current.has_logo = true;
+      closeModal("icon");
+      const dl = $("drawerLogo");
+      if (dl) dl.innerHTML = logoHTML(S.current);
+      renderOverview(S.current);
+      renderGrid();
+      toast("图标已更新");
+    } catch (err) { toast(err.message, "err"); }
+    finally {
+      if (btn) { btn.disabled = false; btn.textContent = origText; }
     }
   }
 
@@ -1447,6 +1536,30 @@ async function runBuild(script) {
       el.addEventListener("click", () => setFilter(el.dataset.filter));
     });
     document.querySelectorAll("[data-close]").forEach((el) => el.addEventListener("click", () => closeModal(el.dataset.close)));
+    // 图标设置
+    const iconAuto = $("btnIconAuto");
+    if (iconAuto) iconAuto.addEventListener("click", () => setIconChoice({ mode: "auto", symbol: null }));
+    const iconSymbols = $("iconSymbols");
+    if (iconSymbols) iconSymbols.addEventListener("click", (e) => {
+      const b = e.target.closest(".icon-sym");
+      if (b) setIconChoice({ mode: "auto", symbol: parseInt(b.dataset.sym, 10) });
+    });
+    const iconFile = $("iconFile");
+    if (iconFile) iconFile.addEventListener("change", () => {
+      const file = iconFile.files && iconFile.files[0];
+      if (!file) return;
+      if (file.size > 8 * 1024 * 1024) { toast("图片过大（>8MB）", "err"); return; }
+      const reader = new FileReader();
+      reader.onload = () => {
+        setIconChoice({ mode: "upload", data: String(reader.result) });
+        const prev = $("iconPreview");
+        if (prev) prev.innerHTML = "<img src='" + reader.result + "' alt=''>";
+        toast("已选择图片，点击「应用图标」保存");
+      };
+      reader.readAsDataURL(file);
+    });
+    const iconApply = $("btnIconApply");
+    if (iconApply) iconApply.addEventListener("click", applyIcon);
     $("newForm").addEventListener("submit", createProject);
     $("importForm").addEventListener("submit", importProject);
     $("settingsForm").addEventListener("submit", saveSettings);

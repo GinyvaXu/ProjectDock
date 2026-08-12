@@ -101,6 +101,25 @@
     </div>
   </div>
 
+  <div class="modal-backdrop" id="iconBackdrop" hidden>
+    <div class="modal">
+      <header class="modal-head"><h3>设置项目图标</h3><button class="icon-btn" data-close="icon">✕</button></header>
+      <div class="icon-picker">
+        <div class="icon-preview-wrap"><span class="icon-preview" id="iconPreview"></span></div>
+        <div class="icon-actions">
+          <button class="btn btn-sm" id="btnIconAuto">🎨 按类型一键生成</button>
+          <label class="btn btn-sm file-btn">📁 上传图片<input type="file" id="iconFile" accept="image/png,image/jpeg,image/webp,image/gif" hidden></label>
+        </div>
+        <div class="icon-symbols" id="iconSymbols"></div>
+        <p class="icon-hint">生成图标会写入项目根目录 logo.png；上传图片需为 PNG/JPEG/WebP/GIF（≤8MB）。</p>
+        <footer class="modal-foot">
+          <button type="button" class="btn" data-close="icon">关闭</button>
+          <button type="button" class="btn btn-primary" id="btnIconApply" disabled>应用图标</button>
+        </footer>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-backdrop" id="importBackdrop" hidden>
     <div class="modal">
       <header class="modal-head"><h3>导入已有文件夹</h3><button class="icon-btn" data-close="import">✕</button></header>

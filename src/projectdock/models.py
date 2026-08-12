@@ -97,3 +97,10 @@ class UpdateInstall(BaseModel):
 class BackupRestore(BaseModel):
     name: str = Field(min_length=1)
     confirm: bool = False
+
+
+class IconPayload(BaseModel):
+    """项目图标：mode=auto 按类型/符号生成，mode=upload 上传图片（data 为 base64）。"""
+    mode: str = "auto"
+    symbol: int | None = None
+    data: str = ""

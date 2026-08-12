@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import os
 import queue as queue_module
@@ -15,12 +16,13 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import agent as agent_mod
+from . import iconmaker
 from . import ailog, backup, builder, compliance, console, contract, github, presets, release, scanner, update, versioning
 from .agent import AGENTS
 from .config import APP_NAME, APP_VERSION
-from .db import delete_custom_type, delete_project, get_custom_type, get_project, list_custom_types, list_projects, upsert_custom_type, upsert_project
+from .db import delete_custom_type, delete_project, get_custom_type, get_project, list_custom_types, list_projects, set_pinned, upsert_custom_type, upsert_project
 from .models import (AGENT_NAMES, PROJECT_TYPES, THEMES, AILogCreate, AgentBatch, AgentRun,
-                     BackupRestore, BuildRun, ComplianceFix, CustomTypeCreate, OpenPath,
+                     BackupRestore, BuildRun, ComplianceFix, CustomTypeCreate, IconPayload, OpenPath,
                      ProjectCreate, ProjectImport, ProjectInit, ReleaseRun, SettingsUpdate, UpdateInstall)
 from .state import AppState
 
@@ -189,7 +191,7 @@ def create_app(state: AppState) -> FastAPI:
                 row["has_logo"] = scanner.find_logo(Path(row["path"])) is not None
                 row["compliant"] = compliance.quick_compliance(Path(row["path"]), row["type"])
                 projects.append(row)
-        return projects
+        return sorted(projects, key=lambda pj: (not bool(pj.get("pinned")), 0))
 
     @api.post("/projects", status_code=201)
     def create_project(payload: ProjectCreate) -> dict:
@@ -248,6 +250,19 @@ def create_app(state: AppState) -> FastAPI:
     def remove_project(pid: str) -> dict:
         delete_project(state.conn, pid)
         return {"ok": True}
+
+    @api.post("/projects/{pid}/pin")
+    def toggle_pin(pid: str) -> dict:
+        proj = _resolve_project(pid)
+        row = get_project(state.conn, pid)
+        if row is None:
+            # 仅磁盘扫描到的项目：先注册再置顶，避免静默失败
+            upsert_project(state.conn, pid, proj["name"], proj["type"], proj["path"],
+                           proj.get("description", ""), imported=bool(proj.get("imported", False)))
+            row = get_project(state.conn, pid)
+        pinned = not bool(row.get("pinned"))
+        set_pinned(state.conn, pid, pinned)
+        return {"ok": True, "pinned": pinned, "id": pid}
 
     @api.post("/projects/{pid}/init")
     def init_project(pid: str, payload: ProjectInit) -> dict:
@@ -372,6 +387,31 @@ def create_app(state: AppState) -> FastAPI:
         except ValueError:
             raise HTTPException(status_code=400, detail="路径不在项目目录内")
         return p
+
+    @api.post("/projects/{pid}/icon")
+    def set_project_icon(pid: str, payload: IconPayload) -> dict:
+        proj = _resolve_project(pid)
+        p = Path(proj["path"])
+        ptype = proj.get("type") or "其他"
+        if payload.mode == "upload":
+            if not payload.data:
+                raise HTTPException(status_code=400, detail="缺少图片数据")
+            try:
+                raw = base64.b64decode(str(payload.data).split(",", 1)[-1])
+            except Exception:
+                raise HTTPException(status_code=400, detail="图片数据无效")
+            if not (raw[:8] == b"\x89PNG\r\n\x1a\n" or raw[:2] == b"\xff\xd8"
+                    or raw[:4] == b"RIFF" or raw[:3] == b"GIF"):
+                raise HTTPException(status_code=400, detail="仅支持 PNG/JPEG/WebP/GIF 图片")
+            if len(raw) > 8 * 1024 * 1024:
+                raise HTTPException(status_code=400, detail="图片过大（>8MB）")
+            (p / "logo.png").write_bytes(raw)
+        else:
+            if payload.symbol is not None and not (0 <= payload.symbol <= 11):
+                raise HTTPException(status_code=400, detail="符号编号无效")
+            data = iconmaker.make_logo_bytes(ptype, payload.symbol, size=256)
+            (p / "logo.png").write_bytes(data)
+        return {"ok": True, "has_logo": True, "path": "logo.png"}
 
     @api.get("/projects/{pid}/logo")
     def project_logo(pid: str):

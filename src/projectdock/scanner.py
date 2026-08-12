@@ -75,6 +75,7 @@ def scan_root(root: Path, db_rows: dict[str, dict] | None = None) -> list[dict]:
             "path": str(child),
             "description": db.get("description", ""),
             "imported": bool(db.get("imported", False)),
+            "pinned": bool(db.get("pinned", False)),
             "created_at": db.get("created_at", ""),
             "updated_at": db.get("updated_at", ""),
             "version": read_version(child),

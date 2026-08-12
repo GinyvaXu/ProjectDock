@@ -170,3 +170,66 @@ def test_agent_task_injects_system_context(tmp_path, monkeypatch):
     assert "帮我归档构建产物" in captured["cmd"]
     # 临时上下文文件在任务结束后被清理（finally）
     assert not ctx_file.exists()
+
+
+def test_pin_toggle_and_list(client):
+    """置顶：POST /pin 切换 pinned，列表返回 pinned 字段且置顶项目排前。"""
+    a = client.post("/api/projects", json={"name": "置顶A", "type": "软件"}).json()
+    b = client.post("/api/projects", json={"name": "置顶B", "type": "软件"}).json()
+    r = client.post(f"/api/projects/{b['id']}/pin")
+    assert r.status_code == 200 and r.json()["pinned"] is True
+    r = client.post(f"/api/projects/{b['id']}/pin")
+    assert r.json()["pinned"] is False
+    r = client.post(f"/api/projects/{b['id']}/pin")
+    assert r.json()["pinned"] is True
+    projects = client.get("/api/projects").json()
+    pa = next(pj for pj in projects if pj["id"] == a["id"])
+    pb = next(pj for pj in projects if pj["id"] == b["id"])
+    assert pa["pinned"] is False and pb["pinned"] is True
+    # 置顶的 B 应排在未置顶的 A 之前
+    assert projects.index(pb) < projects.index(pa)
+    # 不存在的项目 -> 404
+    assert client.post("/api/projects/项目99-软件-不存在/pin").status_code == 404
+
+
+def test_icon_auto_generate_and_upload(client, monkeypatch):
+    """图标管线：auto 生成 logo.png；upload 保存用户图片；非法数据 400。"""
+    from projectdock import iconmaker
+    created = client.post("/api/projects", json={"name": "图标项目", "type": "软件"}).json()
+    pid = created["id"]
+    path = client.app.state.pd_state.settings.root / pid
+    # auto（按类型默认符号）
+    r = client.post(f"/api/projects/{pid}/icon", json={"mode": "auto"})
+    assert r.status_code == 200 and r.json()["has_logo"] is True
+    assert (path / "logo.png").is_file()
+    png_head = (path / "logo.png").read_bytes()[:8]
+    assert png_head == b"\x89PNG\r\n\x1a\n"
+    # 指定符号
+    r = client.post(f"/api/projects/{pid}/icon", json={"mode": "auto", "symbol": 7})
+    assert r.status_code == 200
+    # 符号越界 -> 400
+    assert client.post(f"/api/projects/{pid}/icon", json={"mode": "auto", "symbol": 99}).status_code == 400
+    # upload：先生成一张合法 PNG 再 base64
+    import base64
+    png = iconmaker.make_logo_bytes("软件", 0, size=128)
+    b64 = base64.b64encode(png).decode("ascii")
+    r = client.post(f"/api/projects/{pid}/icon", json={"mode": "upload", "data": b64})
+    assert r.status_code == 200
+    assert (path / "logo.png").read_bytes() == png
+    # 非法数据 -> 400
+    bad = base64.b64encode(b"not an image").decode("ascii")
+    assert client.post(f"/api/projects/{pid}/icon", json={"mode": "upload", "data": bad}).status_code == 400
+
+
+def test_iconmaker_all_symbols_valid_png():
+    """图标生成器：12 种符号均产出合法 PNG，且带透明圆角。"""
+    from projectdock import iconmaker
+    for sym in range(12):
+        data = iconmaker.make_logo_bytes("软件", sym, size=64)
+        assert data[:8] == b"\x89PNG\r\n\x1a\n"
+        assert data[-8:] == b"IEND\xaeB`\x82"
+    # 默认符号按类型映射，非法类型回落默认配色
+    data = iconmaker.make_logo_bytes("不存在的类型", None, size=64)
+    assert data[:8] == b"\x89PNG\r\n\x1a\n"
+    # 尺寸限制在 64..1024
+    assert len(iconmaker.make_logo_bytes("软件", None, size=8)) > 0

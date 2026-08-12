@@ -54,6 +54,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
         cols = {row[1] for row in conn.execute("PRAGMA table_info(projects)").fetchall()}
         if "excluded" not in cols:
             conn.execute("ALTER TABLE projects ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0")
+        if "pinned" not in cols:
+            conn.execute("ALTER TABLE projects ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0")
 
 
 def upsert_project(conn, project_id: str, name: str, ptype: str, path: str,
@@ -88,6 +90,14 @@ def list_projects(conn) -> list[dict]:
     with _DB_LOCK:
         rows = conn.execute("SELECT * FROM projects ORDER BY created_at DESC").fetchall()
         return [dict(r) for r in rows]
+
+
+def set_pinned(conn, project_id: str, pinned: bool) -> None:
+    """置顶/取消置顶项目。"""
+    with _DB_LOCK:
+        conn.execute("UPDATE projects SET pinned = ?, updated_at = ? WHERE id = ?",
+                     (1 if pinned else 0, now(), project_id))
+        conn.commit()
 
 
 def delete_project(conn, project_id: str) -> None:
