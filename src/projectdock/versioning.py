@@ -14,7 +14,7 @@ def read_version(project_path: Path) -> str | None:
     if not vf.is_file():
         return None
     try:
-        text = vf.read_text(encoding="utf-8").strip()
+        text = vf.read_text(encoding="utf-8-sig").strip()
     except OSError:
         return None
     if not text:
@@ -63,34 +63,61 @@ def parse_changelog(project_path: Path, limit: int = 30) -> list[dict]:
     return entries[:limit]
 
 
+def _entry_stat(f: Path, source: str, version: str | None) -> dict:
+    try:
+        mtime = f.stat().st_mtime
+    except OSError:
+        mtime = 0.0
+    return {
+        "name": f.name,
+        "path": str(f),
+        "size": f.stat().st_size if f.is_file() else None,
+        "kind": "file" if f.is_file() else "dir",
+        "mtime": mtime,
+        "source": source,          # "dist"=根目录未归档 / "versions"=版本目录内
+        "version": version,        # versions 内产物所属版本目录名
+    }
+
+
 def list_build_artifacts(project_path: Path, limit_versions: int = 10) -> dict:
-    """扫描 versions/vX.Y.Z（含 dist/ 产物）与根 dist/。"""
-    result = {"versions": [], "dist": []}
+    """扫描 versions/vX.Y.Z（含 dist/ 产物）、根 dist/，并汇总「最新构建」。"""
+    result = {"versions": [], "dist": [], "latest": []}
     versions_dir = project_path / "versions"
+    latest_version: str | None = None
     if versions_dir.is_dir():
         dirs = sorted(versions_dir.iterdir(), key=lambda p: p.name.lower(), reverse=True)
         for vdir in dirs[:limit_versions]:
             if not vdir.is_dir():
                 continue
+            if latest_version is None:
+                latest_version = vdir.name
             entry = {"name": vdir.name, "path": str(vdir), "artifacts": [], "has_src": (vdir / "src").is_dir()}
             dist = vdir / "dist"
             if dist.is_dir():
                 for f in sorted(dist.iterdir()):
-                    entry["artifacts"].append({
-                        "name": f.name,
-                        "path": str(f),
-                        "size": f.stat().st_size if f.is_file() else None,
-                        "kind": "file" if f.is_file() else "dir",
-                    })
+                    entry["artifacts"].append(_entry_stat(f, "versions", vdir.name))
             result["versions"].append(entry)
+    newest_archived_mtime = 0.0
+    for v in result["versions"]:
+        for f in v["artifacts"]:
+            newest_archived_mtime = max(newest_archived_mtime, f["mtime"] or 0.0)
     dist_root = project_path / "dist"
+    root_dist_newer = False
     if dist_root.is_dir():
         for f in sorted(dist_root.iterdir()):
-            result["dist"].append({
-                "name": f.name,
-                "path": str(f),
-                "size": f.stat().st_size if f.is_file() else None,
-            })
+            if f.name.startswith("."):
+                continue
+            e = _entry_stat(f, "dist", None)
+            result["dist"].append(e)
+            if (e["mtime"] or 0.0) > newest_archived_mtime:
+                root_dist_newer = True
+    latest = sorted(
+        list(result["dist"]) + [a for v in result["versions"] for a in v["artifacts"]],
+        key=lambda e: e.get("mtime") or 0.0, reverse=True,
+    )[:12]
+    result["latest"] = latest
+    result["latest_version"] = latest_version
+    result["root_dist_newer"] = root_dist_newer
     return result
 
 

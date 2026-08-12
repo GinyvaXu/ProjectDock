@@ -15,13 +15,13 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import agent as agent_mod
-from . import builder, github, presets, release, scanner, versioning
+from . import builder, compliance, github, presets, release, scanner, versioning
 from .agent import AGENTS
 from .config import APP_NAME, APP_VERSION
 from .db import delete_custom_type, delete_project, get_custom_type, get_project, list_custom_types, list_projects, upsert_custom_type, upsert_project
 from .models import (AGENT_NAMES, PROJECT_TYPES, THEMES, AgentRun, BuildRun,
-                     CustomTypeCreate, OpenPath, ProjectCreate, ProjectImport, ProjectInit,
-                     ReleaseRun, SettingsUpdate)
+                     ComplianceFix, CustomTypeCreate, OpenPath, ProjectCreate, ProjectImport,
+                     ProjectInit, ReleaseRun, SettingsUpdate)
 from .state import AppState
 
 def _locate_web_dir() -> Path:
@@ -179,6 +179,7 @@ def create_app(state: AppState) -> FastAPI:
                 row["version"] = versioning.read_version(Path(row["path"]))
                 row["has_git"] = (Path(row["path"]) / ".git").exists()
                 row["has_logo"] = scanner.find_logo(Path(row["path"])) is not None
+                row["compliant"] = compliance.quick_compliance(Path(row["path"]), row["type"])
                 projects.append(row)
         return projects
 
@@ -255,6 +256,29 @@ def create_app(state: AppState) -> FastAPI:
         upsert_project(state.conn, pid, proj["name"], ptype, proj["path"], description,
                        imported=bool(proj.get("imported", False)))
         return result
+
+    @api.get("/projects/{pid}/compliance")
+    def get_compliance(pid: str) -> dict:
+        proj = _resolve_project(pid)
+        return compliance.check_compliance(Path(proj["path"]), proj.get("type") or "其他")
+
+    @api.post("/projects/{pid}/compliance/fix")
+    def run_compliance_fix(pid: str, payload: ComplianceFix) -> dict:
+        proj = _resolve_project(pid)
+        p = Path(proj["path"])
+        ptype = proj.get("type") or "其他"
+        report = compliance.check_compliance(p, ptype)
+        available = {a["key"]: a for a in report["actions"]}
+        unknown = [k for k in payload.actions if k not in available]
+        if unknown:
+            raise HTTPException(status_code=400, detail="未知的修复动作：" + "、".join(unknown))
+        destructive = [k for k in payload.actions if available[k].get("destructive")]
+        if destructive and not payload.confirm:
+            raise HTTPException(status_code=400, detail="以下动作会移动文件，需勾选确认后执行：" + "、".join(destructive))
+        parsed = scanner.parse_project_dir(pid)
+        title = parsed[2] if parsed else proj.get("name", pid)
+        return compliance.apply_fix(p, ptype, title, proj.get("description", ""),
+                                    payload.actions, confirm=payload.confirm)
 
     @api.get("/projects/{pid}/versions")
     def get_versions(pid: str) -> dict:

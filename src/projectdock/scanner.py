@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 from .versioning import read_version
+from . import compliance
 
 INDEX_RE = re.compile(r"^项目(\d+)-")
 INVALID_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
@@ -79,6 +80,7 @@ def scan_root(root: Path, db_rows: dict[str, dict] | None = None) -> list[dict]:
             "version": read_version(child),
             "has_git": (child / ".git").exists(),
             "has_logo": find_logo(child) is not None,
+            "compliant": compliance.quick_compliance(child, ptype),
         })
     return result
 

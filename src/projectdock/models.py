@@ -51,6 +51,11 @@ class OpenPath(BaseModel):
     path: str = Field(min_length=1)
 
 
+class ComplianceFix(BaseModel):
+    actions: list[str] = []
+    confirm: bool = False
+
+
 class ReleaseRun(BaseModel):
     version: str = Field(min_length=1)
     changelog: str = ""

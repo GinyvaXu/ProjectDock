@@ -95,6 +95,7 @@
         "<div class='card-head-text'>" +
           "<h3 class='card-title'>" + esc(p.title) + "</h3>" +
           "<div class='card-top'><span class='badge " + esc(p.type) + "'>" + esc(p.type) + "</span>" +
+          (p.compliant ? "" : "<span class='badge badge-warn' title='未达标项目管理规范'>⚠ 未合规</span>") +
           (p.version ? "<span class='card-version'>v" + esc(p.version) + "</span>" : "") + "</div>" +
         "</div>" +
       "</div>" +
@@ -147,6 +148,7 @@
     S.current = proj;
     S.versions = null;
     S.builds = [];
+    S.compliance = null;
     S.currentTab = "overview";
     $("drawerName").textContent = proj.title;
     $("drawerType").textContent = proj.type;
@@ -205,6 +207,7 @@
     void panel.offsetWidth;
     panel.classList.add("panel-in");
     if (tab === "versions" && S.versions) renderVersions();
+    if (tab === "compliance") renderCompliance();
   }
 
   function renderOverview(proj) {
@@ -217,6 +220,7 @@
         "<div class='meta-row'><span class='k'>类型</span><span class='v'>" + esc(proj.type) + "</span></div>" +
         "<div class='meta-row'><span class='k'>路径</span><span class='v'>" + esc(proj.path) + "</span></div>" +
         "<div class='meta-row'><span class='k'>Git</span><span class='v'>" + (proj.has_git ? "已初始化 ✓" : "未初始化") + "</span></div>" +
+        "<div class='meta-row'><span class='k'>管理规范</span><span class='v'>" + (proj.compliant ? "已达标 ✓" : "未达标（可一键合规）") + "</span></div>" +
         (proj.created_at ? "<div class='meta-row'><span class='k'>纳入时间</span><span class='v'>" + esc(proj.created_at) + "</span></div>" : "") +
       "</div>" +
       "<div class='git-panel'><div class='git-head'><h4>Git 状态</h4><button class='btn btn-sm' id='btnGitRefresh'>刷新</button></div><div class='git-body' id='gitBody'>加载中…</div></div>" +
@@ -225,6 +229,7 @@
         "<button class='btn btn-sm' data-act='open'>打开文件夹</button>" +
         "<button class='btn btn-sm' data-act='copy'>复制路径</button>" +
         "<button class='btn btn-sm' data-act='init'>预设初始化</button>" +
+        "<button class='btn btn-sm' data-act='compliance'>合规检查</button>" +
         (proj.imported ? "" : "<button class='btn btn-sm btn-danger' data-act='remove'>移除管理</button>") +
       "</div>";
     $("panel-overview").querySelectorAll("[data-act]").forEach((btn) => {
@@ -323,6 +328,8 @@
         await refresh();
         openDrawer(id);
       } catch (err) { toast(err.message, "err"); }
+    } else if (act === "compliance") {
+      showTab("compliance");
     } else if (act === "remove") {
       if (!window.confirm("仅从 ProjectDock 移除管理（不会删除文件夹），继续？")) return;
       try {
@@ -331,6 +338,92 @@
         closeDrawer();
         await refresh();
       } catch (err) { toast(err.message, "err"); }
+    }
+  }
+
+  /* ============ 合规检查 ============ */
+  async function renderCompliance() {
+    if (!S.current) return;
+    const panel = $("panel-compliance");
+    if (!panel) return;
+    if (!S.compliance) {
+      panel.innerHTML = "<div class='build-log'>加载合规检查中…</div>";
+      try {
+        S.compliance = await api("/api/projects/" + encodeURIComponent(S.current.id) + "/compliance");
+      } catch (err) {
+        panel.innerHTML = "<div class='build-log'>加载失败：" + esc(err.message) + "</div>";
+        return;
+      }
+    }
+    const c = S.compliance;
+    let html = "";
+    html += "<div class='ver-block'><div class='ver-head'><h4>项目合规 · " + esc(c.type) + "</h4>" +
+      "<button class='btn btn-sm' id='btnComplianceRefresh'>刷新</button></div>" +
+      "<div class='overview-hero' style='margin-bottom:12px'>" +
+      (c.compliant
+        ? "<div class='ov-version ok-text'>合规 ✓</div><div class='ov-sub'>已满足「" + esc(c.type) + "」类型的必需规范</div>"
+        : "<div class='ov-version warn-text'>待整改 " + (c.summary.total - c.summary.passed) + " 项</div>" +
+          "<div class='ov-sub'>必需项通过 " + c.summary.passed + "/" + c.summary.total + "；建议项未完成 " + c.summary.suggestions + " 项</div>") +
+      "</div>";
+
+    html += "<div class='ver-block'><div class='ver-head'><h4>管理规范（" + esc(c.type) + "）</h4></div>" +
+      "<div class='cl-entry'><div class='g-title'>必需项</div><ul>" +
+      c.standard.required.map((r) => "<li>" + esc(r) + "</li>").join("") + "</ul>" +
+      (c.standard.suggested.length ? "<div class='g-title' style='margin-top:6px'>建议项</div><ul>" + c.standard.suggested.map((r) => "<li>" + esc(r) + "</li>").join("") + "</ul>" : "") +
+      (c.standard.dirs.length ? "<div class='g-title' style='margin-top:6px'>预设目录结构</div><div class='dirs-line'>" +
+        c.standard.dirs.map((d) => "<span class='dir-chip'>" + esc(d) + "</span>").join("") + "</div>" : "") +
+      "</div></div>";
+
+    html += "<div class='ver-block'><div class='ver-head'><h4>检查结果</h4></div>";
+    html += c.checks.map((ch) =>
+      "<div class='cmp-row'><span class='cmp-ico " + (ch.ok ? "ok" : "no") + "'>" + (ch.ok ? "✓" : "✗") + "</span>" +
+      "<span class='cmp-label'>" + esc(ch.label) + (ch.required ? "" : " <span class='sug'>建议</span>") + "</span>" +
+      "<span class='spacer'></span><span class='cmp-detail'>" + esc(ch.detail) + "</span></div>"
+    ).join("");
+    html += "</div>";
+
+    if (c.actions.length) {
+      html += "<div class='ver-block'><div class='ver-head'><h4>一键合规修复</h4></div><div class='cmp-actions'>";
+      html += c.actions.map((a) =>
+        "<label class='check cmp-action'><input type='checkbox' data-key='" + esc(a.key) + "'" + (a.destructive ? "" : " checked") + ">" +
+        "<span><b>" + esc(a.label) + "</b>" + (a.destructive ? "<span class='warn-text'> ⚠ 需确认（移动文件）</span>" : "") +
+        "<div class='cmp-act-detail'>" + esc(a.detail) + "</div></span></label>"
+      ).join("");
+      html += "<div class='cmp-note'>本工具不会删除任何文件；归档动作为移动文件，默认不勾选，勾选后仍需确认。若需删除内容，请通过 AI 助手或手动操作。</div>";
+      html += "<div class='action-row'><button class='btn btn-sm btn-primary' id='btnComplianceFix'>执行已勾选修复</button></div>";
+      html += "<div id='cmpLogBox'></div>";
+      html += "</div>";
+    }
+
+    panel.innerHTML = html;
+    const ref = $("btnComplianceRefresh");
+    if (ref) ref.addEventListener("click", () => { S.compliance = null; renderCompliance(); });
+    const fix = $("btnComplianceFix");
+    if (fix) fix.addEventListener("click", runComplianceFix);
+  }
+
+  async function runComplianceFix() {
+    if (!S.current || !S.compliance) return;
+    const panel = $("panel-compliance");
+    const keys = Array.from(panel.querySelectorAll("input[data-key]:checked")).map((el) => el.dataset.key);
+    if (!keys.length) { toast("请先勾选要执行的修复动作", "err"); return; }
+    const destructive = keys.filter((k) => { const a = S.compliance.actions.find((x) => x.key === k); return a && a.destructive; });
+    if (destructive.length && !window.confirm("以下动作会移动文件（不删除任何文件）：\n" + destructive.join("、") + "\n\n确认执行？")) return;
+    const box = $("cmpLogBox");
+    if (!box) return;
+    box.innerHTML = "<div class='build-status'>执行中…</div>";
+    try {
+      const res = await api("/api/projects/" + encodeURIComponent(S.current.id) + "/compliance/fix", {
+        method: "POST", body: { actions: keys, confirm: true },
+      });
+      box.innerHTML = res.results.map((r) =>
+        "<div class='build-status " + (r.ok ? "ok" : "err") + "'>" + (r.ok ? "✓ " : "✗ ") + esc(r.message || r.key) + "</div>"
+      ).join("");
+      S.compliance = null;
+      await renderCompliance();
+      await refresh();
+    } catch (err) {
+      box.innerHTML = "<div class='build-status err'>执行失败：" + esc(err.message) + "</div>";
     }
   }
 
@@ -361,11 +454,27 @@
     }
     html += "</div>";
 
+    const artifacts = versions.artifacts || { versions: [], dist: [], latest: [] };
+    const latest = artifacts.latest || [];
     html += "<div class='ver-block'><div class='ver-head'><h4>构建产物</h4></div>";
-    if (!versions.artifacts.versions.length && !versions.artifacts.dist.length) {
+    if (!latest.length && !artifacts.versions.length && !artifacts.dist.length) {
       html += "<div class='build-log'>没有发现 versions/ 或 dist/ 构建产物</div>";
     } else {
-      versions.artifacts.versions.forEach((v) => {
+      if (latest.length) {
+        html += "<div class='ver-head latest-head'><h4>最新构建</h4><span class='latest-note'>按修改时间排序（版本目录 + 根 dist）</span></div>";
+        if (artifacts.root_dist_newer) {
+          html += "<div class='note-warn'>⚠ 根目录 dist/ 存在比已归档版本更新的构建（未归档）</div>";
+        }
+        html += latest.map((f) =>
+          "<div class='artifact'><span class='a-name'>" + esc(f.name) + "</span>" +
+          (f.source === "dist" ? "<span class='src-badge unarchived'>未归档</span>" : "<span class='src-badge archived'>" + esc(f.version || "") + "</span>") +
+          "<span class='a-size'>" + fmtSize(f.size) + "</span><span class='spacer'></span>" +
+          "<button class='btn btn-sm' data-open='" + esc(f.path) + "'>打开</button>" +
+          "<button class='btn btn-sm' data-reveal='" + esc(f.path) + "'>位置</button>" +
+          "<button class='btn btn-sm' data-copy='" + esc(f.path) + "'>复制</button></div>"
+        ).join("");
+      }
+      artifacts.versions.forEach((v) => {
         html += "<div class='cl-entry'><h5>" + esc(v.name) + (v.has_src ? " · 含源码快照" : "") + "</h5>" +
           "<div class='artifact'><span class='a-name'>版本目录</span><span class='spacer'></span>" +
           "<button class='btn btn-sm' data-open='" + esc(v.path) + "'>打开文件夹</button>" +
@@ -383,13 +492,17 @@
         }
         html += "</div>";
       });
-      versions.artifacts.dist.forEach((f) => {
-        html += "<div class='artifact'><span class='a-name'>" + esc(f.name) + "</span><span class='a-size'>" + fmtSize(f.size) + "</span>" +
+      if (artifacts.dist.length) {
+        html += "<div class='ver-head latest-head'><h4>未归档构建（项目根目录 dist/）</h4>" +
+          "<button class='btn btn-sm' id='btnGoCompliance'>去合规归档</button></div>";
+        html += artifacts.dist.map((f) =>
+          "<div class='artifact'><span class='a-name'>" + esc(f.name) + "</span><span class='a-size'>" + fmtSize(f.size) + "</span>" +
           "<span class='spacer'></span>" +
           "<button class='btn btn-sm' data-open='" + esc(f.path) + "'>打开</button>" +
           "<button class='btn btn-sm' data-reveal='" + esc(f.path) + "'>位置</button>" +
-          "<button class='btn btn-sm' data-copy='" + esc(f.path) + "'>复制</button></div>";
-      });
+          "<button class='btn btn-sm' data-copy='" + esc(f.path) + "'>复制</button></div>"
+        ).join("");
+      }
     }
     html += "</div>";
 
@@ -407,6 +520,8 @@
     const panel = $("panel-versions");
     panel.innerHTML = html;
     bindPathActions(panel);
+    const goComp = $("btnGoCompliance");
+    if (goComp) goComp.addEventListener("click", () => showTab("compliance"));
     panel.querySelectorAll("[data-copy]").forEach((btn) => {
       btn.addEventListener("click", () => {
         navigator.clipboard.writeText(btn.dataset.copy);
