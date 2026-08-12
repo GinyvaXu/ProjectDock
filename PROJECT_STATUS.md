@@ -18,7 +18,8 @@
 7.4 最新构建视图（跨版本目录 + 根 dist 按修改时间合并，未归档构建标记 + 一键去合规归档）
 7.5 项目合规化 Tab（类型标准展示 / 逐项检查 / 一键修复：创建缺失标准文件、git init、归档根 dist；移动类动作需显式确认，不删除任何文件；项目卡片与概览显示合规状态）
 7.6 修复：VERSION 文件带 UTF-8 BOM 时版本号读取异常
-8. 测试与质量门禁：81 个用例通过，覆盖率 84.28%（门槛 80%）
+7.7 AI 开发闭环地基（v0.2 阶段 1）：项目契约 AGENTS.md（按类型渲染）+ 动态上下文；AI 操作日志 logs/ai/（CLI/API 双入口）；projectdock-cli（contract/context/status/log/logs）；合规新增契约动作；设计文档 02_AI开发闭环设计.md；ProjectDock 自身 AGENTS.md 已契约化（dogfood）
+8. 测试与质量门禁：89 个用例通过，覆盖率 84.48%（门槛 80%）
 9. 构建脚本：build_debug.py / build_exe.py（PyInstaller → versions/vX.Y.Z/dist/），debug/release 均已构建验证，windowed 版崩溃已修复（devnull + crash.log）
 10. GitHub：私有仓库已推送（main 分支），新项目可一键自动建仓
 

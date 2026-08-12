@@ -4,7 +4,7 @@ import os
 import shutil
 from pathlib import Path
 
-from . import backup
+from . import ailog, backup, contract
 from .runner import run_simple, stream_command
 
 AGENTS = {
@@ -60,6 +60,13 @@ def system_prompt(project_name: str, project_path: str, type_info: dict | None =
         lines.append(f"项目类型：{type_info.get('label') or type_info.get('name')}。")
         if structure:
             lines.append("；".join(structure) + "。请遵循这些结构约定进行管理。")
+    try:
+        ctx = contract.dynamic_context(project_path)
+        if ctx:
+            lines.append("")
+            lines.append(ctx)
+    except Exception:  # noqa: BLE001
+        pass
     return "\n".join(lines)
 
 
@@ -90,6 +97,21 @@ async def run_agent_task(state, project_path: Path, agent: str, prompt: str, emi
     emit(f"状态：{'完成' if code == 0 else '失败'}（退出码 {code}）")
     if backup_path:
         emit(f"备份快照：{backup_path}")
+    git_info: dict = {}
+    try:
+        if (project_path / ".git").is_dir():
+            _, head = await run_simple(["git", "log", "--oneline", "-1"], str(project_path))
+            _, status = await run_simple(["git", "-c", "core.quotepath=false", "status", "--porcelain"], str(project_path))
+            git_info = {"head": head.strip() or "", "changed": len([ln for ln in status.splitlines() if ln.strip()])}
+        ailog.write_log(
+            project_path, agent=agent, action=prompt.splitlines()[0][:60] if prompt else "AI 任务",
+            result="done" if code == 0 else "failed", source="inapp",
+            summary=f"{AGENTS.get(agent, {}).get('label', agent)} 任务{'完成' if code == 0 else '失败'}（退出码 {code}）",
+            details=prompt[:500], git=git_info,
+            backup=f"versions/backups/{backup_path.name}" if backup_path else "",
+        )
+    except Exception:  # noqa: BLE001
+        pass
     if (project_path / ".git").is_dir():
         _, head = await run_simple(["git", "log", "--oneline", "-1"], str(project_path))
         _, status = await run_simple(["git", "-c", "core.quotepath=false", "status", "--porcelain"], str(project_path))

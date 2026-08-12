@@ -21,6 +21,11 @@
 - 最新构建视图：版本与构建页顶部「最新构建」按修改时间跨 版本目录 + 根目录 dist/ 合并展示，未归档构建带标记并可一键去合规归档
 - 项目合规化：新增「合规」Tab，按类型展示管理规范（必需/建议/预设目录）、逐项检查结果，一键修复（创建缺失标准文件、git init、归档根 dist 构建产物）；归档/移动类动作默认不勾选并需显式确认，工具不删除任何文件
 - 项目列表与概览展示合规状态徽标；修复 VERSION 文件带 UTF-8 BOM 时版本号读取异常
+- AI 开发闭环地基（v0.2 阶段 1）：项目契约 AGENTS.md（版本/git/归档/日志/流程规范，按类型渲染）+ 动态上下文注入 agent
+- AI 操作日志：每项目 logs/ai/ 持久化（agent 主动写 + App 内任务自动写），CLI/API 双入口
+- projectdock-cli：contract / context / status / log / logs 子命令，供外部 AI agent 对接
+- API 新增 /ai-logs、/contract；合规修复新增「生成 AGENTS.md 项目契约」动作
+- 设计文档：02_AI开发闭环设计.md（含 dogfood 方案与 v0.2 路线图）；ProjectDock 自身 AGENTS.md 已契约化（dogfood）
 - 修复 PyInstaller windowed 版启动崩溃：stdout/stderr 重定向 + 崩溃日志（%LOCALAPPDATA%/ProjectDock/crash.log）；构建加入 --paths src
 - 健壮性修复：文件夹重命名/移动不再触发 UNIQUE(path) 冲突；更换根目录自动刷新注册路径；移除管理的项目不会重新出现在列表
 - 安全修复：项目名清理 Windows 非法字符与 `..` 路径穿越

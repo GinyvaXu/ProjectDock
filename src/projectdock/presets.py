@@ -238,7 +238,11 @@ def _apply_spec(project_path: Path, spec: dict, ptype: str, title: str, descript
     for rel, template in spec.get("files", {}).items():
         target = project_path / rel
         target.parent.mkdir(parents=True, exist_ok=True)
-        content = template.format(title=title, description=description, package=package)
+        if rel == "AGENTS.md":
+            from .contract import contract_for
+            content = contract_for(ptype, spec, title, description)
+        else:
+            content = template.format(title=title, description=description, package=package)
         target.write_text(content, encoding="utf-8")
         created.append(rel)
     git_ok = False

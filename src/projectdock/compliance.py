@@ -32,6 +32,7 @@ _REQUIRED = {
 _GIT_TYPES = {"网站", "游戏", "脚本", "其他"}
 _SUGGESTED = {
     "软件": [
+        {"key": "contract", "label": "AGENTS.md 项目契约", "kind": "file", "name": "AGENTS.md"},
         {"key": "versions", "label": "versions/ 版本归档目录", "kind": "dir", "name": "versions"},
         {"key": "build_script", "label": "构建脚本（build*.py / 打包.bat）", "kind": "pattern", "patterns": ("build*.py", "打包.bat")},
         {"key": "src", "label": "src/ 源码目录", "kind": "dir", "name": "src"},
@@ -137,6 +138,13 @@ def check_compliance(project_path: Path, ptype: str) -> dict:
                 "detail": f"在项目根目录创建 {item['name']}/",
                 "destructive": False,
             })
+        if not ok and item["key"] == "contract":
+            actions.append({
+                "key": "create_contract",
+                "label": "生成 AGENTS.md 项目契约",
+                "detail": "按该类型规范生成 AGENTS.md（AI agent 对接契约，含版本/git/日志要求）",
+                "destructive": False,
+            })
     dist_dir = project_path / "dist"
     candidates = detect_build_artifacts(dist_dir)
     if candidates:
@@ -215,6 +223,10 @@ def _execute_fix(project_path: Path, ptype: str, title: str, description: str,
     if key == "create_changelog":
         _write(project_path / "CHANGELOG.md", presets.CHANGELOG_TEMPLATE)
         return {"ok": True, "message": "已创建 CHANGELOG.md"}
+    if key == "create_contract":
+        from .contract import write_contract
+        write_contract(project_path, ptype, title or project_path.name, description or "", force=False)
+        return {"ok": True, "message": "已生成 AGENTS.md 项目契约"}
     if key == "create_gitignore":
         content = presets.GITIGNORE_SOFTWARE if ptype == "软件" else presets.GITIGNORE_BASIC
         _write(project_path / ".gitignore", content)

@@ -15,11 +15,11 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import agent as agent_mod
-from . import builder, compliance, github, presets, release, scanner, versioning
+from . import ailog, builder, compliance, contract, github, presets, release, scanner, versioning
 from .agent import AGENTS
 from .config import APP_NAME, APP_VERSION
 from .db import delete_custom_type, delete_project, get_custom_type, get_project, list_custom_types, list_projects, upsert_custom_type, upsert_project
-from .models import (AGENT_NAMES, PROJECT_TYPES, THEMES, AgentRun, BuildRun,
+from .models import (AGENT_NAMES, PROJECT_TYPES, THEMES, AILogCreate, AgentRun, BuildRun,
                      ComplianceFix, CustomTypeCreate, OpenPath, ProjectCreate, ProjectImport,
                      ProjectInit, ReleaseRun, SettingsUpdate)
 from .state import AppState
@@ -256,6 +256,30 @@ def create_app(state: AppState) -> FastAPI:
         upsert_project(state.conn, pid, proj["name"], ptype, proj["path"], description,
                        imported=bool(proj.get("imported", False)))
         return result
+
+    @api.get("/projects/{pid}/ai-logs")
+    def list_ai_logs(pid: str, limit: int = 50) -> list[dict]:
+        proj = _resolve_project(pid)
+        return ailog.list_logs(Path(proj["path"]), limit=max(1, min(limit, 200)))
+
+    @api.post("/projects/{pid}/ai-logs", status_code=201)
+    def create_ai_log(pid: str, payload: AILogCreate) -> dict:
+        proj = _resolve_project(pid)
+        path = ailog.write_log(
+            Path(proj["path"]), agent=payload.agent, action=payload.action, result=payload.result,
+            summary=payload.summary, details=payload.details, source=payload.source,
+        )
+        return {"ok": True, "file": path.name}
+
+    @api.post("/projects/{pid}/contract", status_code=201)
+    def generate_contract(pid: str, payload: ProjectInit | None = None) -> dict:
+        proj = _resolve_project(pid)
+        p = Path(proj["path"])
+        ptype = proj.get("type") or "其他"
+        parsed = scanner.parse_project_dir(pid)
+        title = parsed[2] if parsed else proj.get("name", pid)
+        path = contract.write_contract(p, ptype, title, proj.get("description", ""), force=True)
+        return {"ok": True, "path": str(path)}
 
     @api.get("/projects/{pid}/compliance")
     def get_compliance(pid: str) -> dict:

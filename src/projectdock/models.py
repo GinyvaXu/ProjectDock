@@ -51,6 +51,15 @@ class OpenPath(BaseModel):
     path: str = Field(min_length=1)
 
 
+class AILogCreate(BaseModel):
+    agent: str = Field(min_length=1, max_length=60)
+    action: str = Field(min_length=1, max_length=200)
+    result: str = "done"
+    summary: str = ""
+    details: str = ""
+    source: str = "external"
+
+
 class ComplianceFix(BaseModel):
     actions: list[str] = []
     confirm: bool = False
