@@ -56,6 +56,7 @@ WizardStyle=modern
 CloseApplications=force
 RestartApplications=no
 UninstallDisplayIcon={app}\{#MyAppExeName}
+SetupIconFile=@@ICON@@
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional tasks:"; Flags: unchecked
@@ -75,7 +76,8 @@ Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: no
             .replace("@@VERSION@@", version)
             .replace("@@EXE@@", exe_name)
             .replace("@@OUT@@", str(out))
-            .replace("@@APPDIR@@", str(app_dir)))
+            .replace("@@APPDIR@@", str(app_dir))
+            .replace("@@ICON@@", str(ROOT / "assets" / "icon.ico")))
     # Inno Setup 6 需要 UTF-8 BOM 才能正确解析含中文路径的脚本
     iss_path.write_text(text, encoding="utf-8-sig")
 

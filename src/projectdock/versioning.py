@@ -79,8 +79,25 @@ def _entry_stat(f: Path, source: str, version: str | None) -> dict:
     }
 
 
+# 根级可视为「未归档构建产物目录」的子目录（build/ 仅认顶层二进制文件，避免中间目录）
+ROOT_ARTIFACT_DIRS = ("dist", "installer", "build")
+_BUILD_EXT = {".exe", ".msi", ".msix", ".appx", ".appimage", ".deb", ".rpm",
+              ".dmg", ".pkg", ".nupkg", ".whl"}
+
+
+def _is_build_binary(f: Path) -> bool:
+    return f.is_file() and f.suffix.lower() in _BUILD_EXT
+
+
+def _version_artifact(f: Path) -> bool:
+    """versions/*/{dist,installer} 内的可见产物：二进制文件或散装目录（onedir/SetupPackage）。"""
+    if f.is_dir():
+        return True
+    return _is_build_binary(f)
+
+
 def list_build_artifacts(project_path: Path, limit_versions: int = 10) -> dict:
-    """扫描 versions/vX.Y.Z（含 dist/ 产物）、根 dist/，并汇总「最新构建」。"""
+    """扫描 versions/vX.Y.Z（含 dist/、installer/ 产物）、根 dist/installer/build，并汇总「最新构建」。"""
     result = {"versions": [], "dist": [], "latest": []}
     versions_dir = project_path / "versions"
     latest_version: str | None = None
@@ -92,22 +109,29 @@ def list_build_artifacts(project_path: Path, limit_versions: int = 10) -> dict:
             if latest_version is None:
                 latest_version = vdir.name
             entry = {"name": vdir.name, "path": str(vdir), "artifacts": [], "has_src": (vdir / "src").is_dir()}
-            dist = vdir / "dist"
-            if dist.is_dir():
-                for f in sorted(dist.iterdir()):
-                    entry["artifacts"].append(_entry_stat(f, "versions", vdir.name))
+            for sub in ("dist", "installer"):
+                subdir = vdir / sub
+                if subdir.is_dir():
+                    for f in sorted(subdir.iterdir()):
+                        if _version_artifact(f):
+                            entry["artifacts"].append(_entry_stat(f, "versions", vdir.name))
             result["versions"].append(entry)
     newest_archived_mtime = 0.0
     for v in result["versions"]:
         for f in v["artifacts"]:
             newest_archived_mtime = max(newest_archived_mtime, f["mtime"] or 0.0)
-    dist_root = project_path / "dist"
     root_dist_newer = False
-    if dist_root.is_dir():
-        for f in sorted(dist_root.iterdir()):
+    for sub in ROOT_ARTIFACT_DIRS:
+        subdir = project_path / sub
+        if not subdir.is_dir():
+            continue
+        for f in sorted(subdir.iterdir()):
             if f.name.startswith("."):
                 continue
-            e = _entry_stat(f, "dist", None)
+            # dist/ 保留原行为（文件+散装目录都列出）；installer/build 只列顶层二进制
+            if sub != "dist" and not _is_build_binary(f):
+                continue
+            e = _entry_stat(f, sub, None)
             result["dist"].append(e)
             if (e["mtime"] or 0.0) > newest_archived_mtime:
                 root_dist_newer = True

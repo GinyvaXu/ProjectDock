@@ -56,7 +56,7 @@ def list_logs(project_path: Path, limit: int = 50) -> list[dict]:
         return []
     out: list[dict] = []
     try:
-        files = sorted(d.glob("*.json"), reverse=True)
+        files = sorted(d.glob("*.json"), key=lambda f: (f.stat().st_mtime, f.name), reverse=True)
     except OSError:
         return out
     for f in files:

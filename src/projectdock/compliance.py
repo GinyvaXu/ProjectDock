@@ -156,6 +156,18 @@ def check_compliance(project_path: Path, ptype: str) -> dict:
             "destructive": True,
             "items": rels,
         })
+    groups = root_artifact_candidates(project_path)
+    extra = {k: v for k, v in groups.items() if k != "dist"}
+    if extra:
+        total = sum(len(v) for v in extra.values())
+        detail = "；".join(f"{k}/ {len(v)} 个" for k, v in extra.items())
+        actions.append({
+            "key": "archive_artifacts",
+            "label": "归档 installer/ 与 build/ 构建产物到 versions/ 版本目录",
+            "detail": "将移动 " + str(total) + " 个构建产物到各自版本目录（" + detail + "）：" +
+                      "、".join(f"{k}/{p.name}" for k, v in extra.items() for p in v[:6]),
+            "destructive": True,
+        })
     required_checks = [c for c in checks if c["required"]]
     passed = sum(1 for c in required_checks if c["ok"])
     return {
@@ -209,7 +221,7 @@ def apply_fix(project_path: Path, ptype: str, title: str, description: str,
 
 def _execute_fix(project_path: Path, ptype: str, title: str, description: str,
                  key: str, confirm: bool) -> dict:
-    if key in ("archive_dist",) and not confirm:
+    if key in ("archive_dist", "archive_artifacts") and not confirm:
         return {"ok": False, "message": "该操作会移动文件，需要显式确认后再执行"}
 
     if key == "create_readme":
@@ -248,7 +260,81 @@ def _execute_fix(project_path: Path, ptype: str, title: str, description: str,
         return {"ok": ok, "message": "Git 初始化并完成首次提交" if ok else "Git 初始化失败（请检查 git 是否可用）"}
     if key == "archive_dist":
         return archive_root_dist(project_path)
+    if key == "archive_artifacts":
+        return archive_root_artifacts(project_path)
     return {"ok": False, "message": f"未知动作：{key}"}
+
+
+ROOT_ARTIFACT_DIRS = ("dist", "installer", "build")
+_ARTIFACT_EXTS = {".exe", ".msi", ".msix", ".appx", ".appimage", ".deb", ".rpm",
+                  ".dmg", ".pkg", ".nupkg", ".whl"}
+_NAME_VERSION_RE = re.compile(r"v?(\d+\.\d+(?:\.\d+)?(?:[-+][0-9A-Za-z.-]+)?)")
+
+
+def root_artifact_candidates(project_path: Path) -> dict[str, list[Path]]:
+    """收集根目录 dist/installer/build 里看起来像构建产物的条目。
+
+    - dist/：沿用 detect_build_artifacts（文件+散装目录）
+    - installer/、build/：只认顶层二进制文件（build/ 的 debug/、win-unpacked/ 是中间目录，忽略）
+    返回 {目录名: [Path, ...]}。
+    """
+    out: dict[str, list[Path]] = {}
+    for name in ROOT_ARTIFACT_DIRS:
+        d = project_path / name
+        if not d.is_dir():
+            continue
+        items = detect_build_artifacts(d)
+        if name != "dist":
+            items = [p for p in items if p.is_file() and p.suffix.lower() in _ARTIFACT_EXTS]
+        if items:
+            out[name] = items
+    return out
+
+
+def _version_in_name(name: str) -> str | None:
+    m = _NAME_VERSION_RE.search(name)
+    return m.group(1) if m else None
+
+
+def archive_root_artifacts(project_path: Path, version: str | None = None) -> dict:
+    """把根目录 dist/installer/build 的构建产物归档到 versions/vX.Y.Z/dist/。
+
+    - 文件名带版本号（如 GinyVoC-Debug-v0.6.0.exe）按各自版本归档；
+      否则统一归档到 version（缺省读 VERSION）。
+    - 目标已存在且大小一致：视为重复，留在原地并报告（不删除）；
+      大小不一致：以 _new_<时间戳> 后缀归档，绝不覆盖旧产物。
+    """
+    project = Path(project_path)
+    groups = root_artifact_candidates(project)
+    if not groups:
+        return {"ok": True, "message": "根目录没有需要归档的构建产物"}
+    fallback = version or read_version(project) or "0.1.0"
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    moved, skipped, failed = [], [], []
+    for dirname, items in groups.items():
+        for src in items:
+            ver = _version_in_name(src.name) or fallback
+            target_dir = project / "versions" / f"v{ver}" / "dist"
+            target_dir.mkdir(parents=True, exist_ok=True)
+            dst = target_dir / src.name
+            try:
+                if dst.exists():
+                    if dst.is_file() and dst.stat().st_size == src.stat().st_size:
+                        skipped.append(f"{dirname}/{src.name}（与已归档一致）")
+                        continue
+                    dst = target_dir / f"{src.stem}_new_{ts}{src.suffix}"
+                os.replace(str(src), str(dst))
+                moved.append(f"{dirname}/{src.name} -> versions/v{ver}/dist/")
+            except OSError as exc:
+                failed.append(f"{dirname}/{src.name}（{exc}）")
+    msg = "已归档 " + str(len(moved)) + " 个构建产物"
+    if moved:
+        msg += "：" + "、".join(moved[:8]) + ("…" if len(moved) > 8 else "")
+    if skipped:
+        msg += "；重复跳过 " + str(len(skipped)) + " 个（已归档，保留原文件）：" + "、".join(skipped[:6])
+    if failed:
+        msg += "；失败 " + str(len(failed)) + " 个：" + "、".join(failed[:6])
+    return {"ok": not failed, "message": msg, "moved": moved, "skipped": skipped}
 
 
 def archive_root_dist(project_path: Path, version: str | None = None) -> dict:

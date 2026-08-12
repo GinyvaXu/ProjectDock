@@ -223,9 +223,9 @@ def cmd_archive(args) -> None:
     project = _resolve_project(args.root, args.name)
     _confirm(args, "archive")
     version = args.version.strip().lstrip("v") or None
-    result = compliance.archive_root_dist(project, version=version)
+    result = compliance.archive_root_artifacts(project, version=version)
     print(result["message"])
-    ailog.write_log(project, agent=args.agent, action="归档根目录构建产物", result="done" if result["ok"] else "failed",
+    ailog.write_log(project, agent=args.agent, action="归档根目录构建产物(dist/installer/build)", result="done" if result["ok"] else "failed",
                     summary=result["message"], source="external")
     if not result["ok"]:
         sys.exit(1)

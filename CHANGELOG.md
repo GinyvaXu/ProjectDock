@@ -2,6 +2,21 @@
 
 本文件记录 ProjectDock 的版本迭代。格式：语义化版本 + 日期 + 变更分组。
 
+## [0.5.0] - 2026-08-12
+### Added（图标 + 备份管理 + AI 对话升级 + 产物扫描归档）
+- 全新 iOS 风格图标：蓝靛紫渐变圆角方块 + 玻璃高光 + Dock 托盘 + 4 枚彩色应用块；assets/icon.png（1024）/icon.ico（多尺寸）/web/logo.png，接入 debug/exe 构建、Setup 安装包与 Web favicon/侧栏
+- 备份管理面板（每个项目概览页）：立即备份 / 备份列表 / 一键恢复（恢复前自动再备份）/ 删除备份；备份存 versions/backups/pd_backup_*.zip，恢复跳过 .git/versions/dist 等顶层目录并做路径穿越防护
+- AI 对话 Markdown 渲染：标题/列表/代码块/链接/粗体安全渲染，原文保留；每条 AI 回复带「复制」按钮；聊天区文本可自由选中复制
+- AI agent 活动状态条：实时显示「正在思考 / 正在备份 / 正在调用 CLI / 正在汇总报告」等处理中内容
+- AI 任务解读系统提示词：明确「整理版本归档 ≠ 改 CHANGELOG」，只有明确要求发布才走完整发布流程，避免 agent 听不懂指令
+- 构建产物扫描升级：识别根 dist/installer/build 与 versions/*/dist|installer 下的构建产物（exe/msi 等）；合规化一键归档带版本号产物（如 GinyVoC-Debug-v0.6.0.exe → versions/v0.6.0/dist/），重复文件保留原地，工具不删除任何文件
+- 修复：所有 subprocess 调用补 creationflags=0x08000000，消除切换项目时弹出控制台
+- 修复：切换项目竞态——抽屉序号守卫，旧项目的 versions/builds/Git/文档/AI 日志不再覆盖新项目显示
+- 修复：AI 日志列表按 (mtime, name) 排序，同秒文件不再错序
+- 修复：config.py APP_VERSION 与 VERSION 同步（此前硬编码导致 health 接口版本号滞后）；update/github/contract 缺失 os 导入导致更新检查 500 与 Git 状态异常
+- 数据操作：本地 7 个软件项目全部合规化（补 README/VERSION/CHANGELOG/.gitignore/git init）并将散落 dist/installer/build 产物归档到 versions/vX.Y.Z/dist/
+- 测试 135 个通过，覆盖率 84.88%（门槛 80%）
+
 ## [0.4.0] - 2026-08-12
 ### Added（自动更新 + Setup 安装包）
 - 自动更新链路：检查 GitHub Releases → 下载 Setup 安装包 → 静默安装，全链路打通

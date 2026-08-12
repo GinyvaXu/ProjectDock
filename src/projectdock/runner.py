@@ -119,8 +119,12 @@ class JobRegistry:
 
     async def _run_task(self, job: Job, coro_factory) -> None:
         try:
-            def emit(text: str) -> None:
-                job.queue.put({"type": "line", "text": text})
+            def emit(text: str | dict) -> None:
+                # 支持结构化事件（dict 原样入队）；字符串按普通输出行处理
+                if isinstance(text, dict):
+                    job.queue.put(text)
+                else:
+                    job.queue.put({"type": "line", "text": text})
 
             await coro_factory(emit)
             job.status = "done"

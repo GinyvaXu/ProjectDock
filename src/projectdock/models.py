@@ -92,3 +92,8 @@ class SettingsUpdate(BaseModel):
 
 class UpdateInstall(BaseModel):
     path: str = Field(min_length=1)
+
+
+class BackupRestore(BaseModel):
+    name: str = Field(min_length=1)
+    confirm: bool = False

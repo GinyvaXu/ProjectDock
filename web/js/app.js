@@ -22,6 +22,7 @@
     chatRunning: false,
     view: "grid",
     console: null,
+    drawerSeq: 0,
   };
 
   const $ = (id) => document.getElementById(id);
@@ -151,6 +152,7 @@
   async function openDrawer(id) {
     const proj = S.projects.find((p) => p.id === id);
     if (!proj) return;
+    const seq = ++S.drawerSeq;
     S.current = proj;
     S.versions = null;
     S.builds = [];
@@ -172,6 +174,7 @@
         api("/api/projects/" + encodeURIComponent(id) + "/versions"),
         api("/api/projects/" + encodeURIComponent(id) + "/builds"),
       ]);
+      if (seq !== S.drawerSeq) return;
       S.versions = versions;
       S.builds = builds;
       renderVersions();
@@ -247,6 +250,7 @@
         (proj.created_at ? "<div class='meta-row'><span class='k'>纳入时间</span><span class='v'>" + esc(proj.created_at) + "</span></div>" : "") +
       "</div>" +
       "<div class='git-panel'><div class='git-head'><h4>Git 状态</h4><button class='btn btn-sm' id='btnGitRefresh'>刷新</button></div><div class='git-body' id='gitBody'>加载中…</div></div>" +
+      "<div class='git-panel'><div class='git-head'><h4>备份管理</h4><button class='btn btn-sm' id='btnBackupNow'>立即备份</button></div><div class='git-body' id='backupList'>加载中…</div></div>" +
       "<div class='doc-panel'><div class='git-head'><h4>项目文档</h4><button class='btn btn-sm' id='btnDocRefresh'>刷新</button></div><div class='doc-list' id='docList'>加载中…</div></div>" +
       "<div class='action-row'>" +
         "<button class='btn btn-sm' data-act='open'>打开文件夹</button>" +
@@ -262,16 +266,79 @@
     if (gitRefresh) gitRefresh.addEventListener("click", () => loadGitStatus(S.current.id));
     const docRefresh = $("btnDocRefresh");
     if (docRefresh) docRefresh.addEventListener("click", () => loadDocuments(S.current.id));
+    const backupBtn = $("btnBackupNow");
+    if (backupBtn) backupBtn.addEventListener("click", createBackupNow);
     loadGitStatus(proj.id);
     loadDocuments(proj.id);
+    loadBackups(proj.id);
+  }
+
+  /* 备份管理 */
+  async function loadBackups(id) {
+    const body = $("backupList");
+    if (!body) return;
+    const seq = S.drawerSeq;
+    body.innerHTML = "加载中…";
+    try {
+      const list = await api("/api/projects/" + encodeURIComponent(id) + "/backups");
+      if (seq !== S.drawerSeq || !S.current || S.current.id !== id) return;
+      if (!list.length) {
+        body.innerHTML = "<div class='git-row'><span>暂无备份（AI 任务/发布前会自动创建快照到 versions/backups/）</span></div>";
+        return;
+      }
+      body.innerHTML = list.map((b) =>
+        "<div class='artifact' style='margin:4px 0'><span class='a-name'>" + esc(b.name) + "</span>" +
+        "<span class='a-size'>" + fmtSize(b.size) + "</span><span class='spacer'></span>" +
+        "<button class='btn btn-sm' data-restore='" + esc(b.name) + "'>恢复</button>" +
+        "<button class='btn btn-sm btn-danger' data-delbackup='" + esc(b.name) + "'>删除</button></div>"
+      ).join("");
+      body.querySelectorAll("[data-restore]").forEach((btn) => btn.addEventListener("click", () => restoreBackupNow(btn.dataset.restore)));
+      body.querySelectorAll("[data-delbackup]").forEach((btn) => btn.addEventListener("click", () => deleteBackupNow(btn.dataset.delbackup)));
+    } catch (err) {
+      body.innerHTML = "<div class='git-row'>读取失败：" + esc(err.message) + "</div>";
+    }
+  }
+
+  async function createBackupNow() {
+    if (!S.current) return;
+    const btn = $("btnBackupNow");
+    if (btn) btn.disabled = true;
+    try {
+      const r = await api("/api/projects/" + encodeURIComponent(S.current.id) + "/backups", { method: "POST", body: {} });
+      toast("已创建备份 " + r.name);
+      loadBackups(S.current.id);
+    } catch (err) { toast(err.message, "err"); }
+    finally { if (btn) btn.disabled = false; }
+  }
+
+  async function restoreBackupNow(name) {
+    if (!S.current) return;
+    if (!window.confirm("从备份「" + name + "」恢复将覆盖当前项目文件（会自动先留一个安全快照）。确定继续？")) return;
+    try {
+      const r = await api("/api/projects/" + encodeURIComponent(S.current.id) + "/backups/restore", { method: "POST", body: { name: name, confirm: true } });
+      toast("已恢复 " + r.restored + " 个文件" + (r.skipped.length ? "（跳过 " + r.skipped.length + " 项）" : ""));
+      loadBackups(S.current.id);
+    } catch (err) { toast(err.message, "err"); }
+  }
+
+  async function deleteBackupNow(name) {
+    if (!S.current) return;
+    if (!window.confirm("删除备份「" + name + "」？此操作不可恢复。")) return;
+    try {
+      await api("/api/projects/" + encodeURIComponent(S.current.id) + "/backups/" + encodeURIComponent(name), { method: "DELETE" });
+      toast("已删除备份");
+      loadBackups(S.current.id);
+    } catch (err) { toast(err.message, "err"); }
   }
 
   async function loadGitStatus(id) {
     const body = $("gitBody");
     if (!body) return;
+    const seq = S.drawerSeq;
     body.innerHTML = "加载中…";
     try {
       const st = await api("/api/projects/" + encodeURIComponent(id) + "/git-status");
+      if (seq !== S.drawerSeq || !S.current || S.current.id !== id) return;
       if (!st.has_git) {
         body.innerHTML = "<div class='git-row'><span class='git-dot no'></span><span>该项目未初始化 git（可点上方「预设初始化」）</span></div>";
         return;
@@ -313,9 +380,11 @@
   async function loadDocuments(id) {
     const list = $("docList");
     if (!list) return;
+    const seq = S.drawerSeq;
     list.innerHTML = "加载中…";
     try {
       const docs = await api("/api/projects/" + encodeURIComponent(id) + "/documents");
+      if (seq !== S.drawerSeq || !S.current || S.current.id !== id) return;
       if (!docs.length) {
         list.innerHTML = "<div class='git-row'><span>未找到计划书/企划书等文档（支持 README、计划书、企划书、方案、设计、需求等）</span></div>";
         return;
@@ -367,11 +436,14 @@
   /* ============ 文稿版本 / AI 日志 / 总控台 ============ */
   async function renderDocs() {
     if (!S.current) return;
+    const seq = S.drawerSeq;
+    const pid = S.current.id;
     const panel = $("panel-docs");
     if (!panel) return;
     panel.innerHTML = "<div class='build-log'>加载文稿…</div>";
     try {
-      const docs = await api("/api/projects/" + encodeURIComponent(S.current.id) + "/documents?scope=all");
+      const docs = await api("/api/projects/" + encodeURIComponent(pid) + "/documents?scope=all");
+      if (seq !== S.drawerSeq || !S.current || S.current.id !== pid) return;
       if (!docs.length) {
         panel.innerHTML = "<div class='build-log'>未找到文档（支持 docx/doc/pdf/pptx/xlsx/md/txt）</div>";
         return;
@@ -398,11 +470,14 @@
 
   async function renderAILog() {
     if (!S.current) return;
+    const seq = S.drawerSeq;
+    const pid = S.current.id;
     const panel = $("panel-ailog");
     if (!panel) return;
     panel.innerHTML = "<div class='ver-block'><div class='ver-head'><h4>AI 操作日志</h4><button class='btn btn-sm' id='btnAILogRefresh'>刷新</button></div><div class='build-log'>加载中…</div></div>";
     try {
-      const logs = await api("/api/projects/" + encodeURIComponent(S.current.id) + "/ai-logs");
+      const logs = await api("/api/projects/" + encodeURIComponent(pid) + "/ai-logs");
+      if (seq !== S.drawerSeq || !S.current || S.current.id !== pid) return;
       const box = panel.querySelector(".build-log");
       if (!logs.length) {
         box.innerHTML = "（暂无 AI 操作日志）";
@@ -537,12 +612,15 @@
   /* ============ 合规检查 ============ */
   async function renderCompliance() {
     if (!S.current) return;
+    const seq = S.drawerSeq;
+    const pid = S.current.id;
     const panel = $("panel-compliance");
     if (!panel) return;
     if (!S.compliance) {
       panel.innerHTML = "<div class='build-log'>加载合规检查中…</div>";
       try {
-        S.compliance = await api("/api/projects/" + encodeURIComponent(S.current.id) + "/compliance");
+        S.compliance = await api("/api/projects/" + encodeURIComponent(pid) + "/compliance");
+        if (seq !== S.drawerSeq || !S.current || S.current.id !== pid) return;
       } catch (err) {
         panel.innerHTML = "<div class='build-log'>加载失败：" + esc(err.message) + "</div>";
         return;
@@ -656,11 +734,11 @@
       if (latest.length) {
         html += "<div class='ver-head latest-head'><h4>最新构建</h4><span class='latest-note'>按修改时间排序（版本目录 + 根 dist）</span></div>";
         if (artifacts.root_dist_newer) {
-          html += "<div class='note-warn'>⚠ 根目录 dist/ 存在比已归档版本更新的构建（未归档）</div>";
+          html += "<div class='note-warn'>⚠ 根目录 dist/installer/build 存在比已归档版本更新的构建（未归档）</div>";
         }
         html += latest.map((f) =>
           "<div class='artifact'><span class='a-name'>" + esc(f.name) + "</span>" +
-          (f.source === "dist" ? "<span class='src-badge unarchived'>未归档</span>" : "<span class='src-badge archived'>" + esc(f.version || "") + "</span>") +
+          (f.source === "versions" ? "<span class='src-badge archived'>" + esc(f.version || "") + "</span>" : "<span class='src-badge unarchived'>未归档</span>") +
           "<span class='a-size'>" + fmtSize(f.size) + "</span><span class='spacer'></span>" +
           "<button class='btn btn-sm' data-open='" + esc(f.path) + "'>打开</button>" +
           "<button class='btn btn-sm' data-reveal='" + esc(f.path) + "'>位置</button>" +
@@ -686,7 +764,7 @@
         html += "</div>";
       });
       if (artifacts.dist.length) {
-        html += "<div class='ver-head latest-head'><h4>未归档构建（项目根目录 dist/）</h4>" +
+        html += "<div class='ver-head latest-head'><h4>未归档构建（项目根目录 dist/installer/build）</h4>" +
           "<button class='btn btn-sm' id='btnGoCompliance'>去合规归档</button></div>";
         html += artifacts.dist.map((f) =>
           "<div class='artifact'><span class='a-name'>" + esc(f.name) + "</span><span class='a-size'>" + fmtSize(f.size) + "</span>" +
@@ -831,14 +909,93 @@
     if (S.settings.agent) sel.value = S.settings.agent;
   }
 
+  /* 安全 Markdown 渲染（先 HTML 转义再套格式，杜绝 XSS） */
+  function inlineMd(s) {
+    s = esc(s);
+    s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
+    s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+    s = s.replace(/~~([^~]+)~~/g, "<del>$1</del>");
+    s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, function (m, txt, url) {
+      const safe = String(url).replace(/["'<>]/g, "");
+      return "<a href='" + safe + "' target='_blank' rel='noopener'>" + txt + "</a>";
+    });
+    return s;
+  }
+
+  function mdToHtml(src) {
+    const lines = String(src || "").split("\n");
+    let html = "";
+    let inCode = false, codeBuf = [];
+    const flushCode = () => {
+      if (codeBuf.length) html += "<pre><code>" + esc(codeBuf.join("\n")) + "</code></pre>";
+      codeBuf = [];
+    };
+    lines.forEach((line) => {
+      const fence = line.match(/^```(\w*)\s*$/);
+      if (fence) {
+        if (inCode) { inCode = false; flushCode(); }
+        else { flushCode(); inCode = true; }
+        return;
+      }
+      if (inCode) { codeBuf.push(line); return; }
+      const h = line.match(/^(#{1,6})\s+(.*)$/);
+      if (h) { html += "<h" + h[1].length + ">" + inlineMd(h[2]) + "</h" + h[1].length + ">"; return; }
+      if (/^(-{3,}|\*{3,}|_{3,})$/.test(line.trim())) { html += "<hr>"; return; }
+      const li = line.match(/^\s*([-*+])\s+(.*)$/);
+      if (li) { html += "<li>" + inlineMd(li[2]) + "</li>"; return; }
+      const ol = line.match(/^\s*\d+[.)]\s+(.*)$/);
+      if (ol) { html += "<li class='md-ol'>" + inlineMd(ol[1]) + "</li>"; return; }
+      if (!line.trim()) return;
+      html += "<p>" + inlineMd(line) + "</p>";
+    });
+    if (inCode) flushCode();
+    return html;
+  }
+
   function appendChatMessage(kind, text) {
     const wrap = $("chatMsgs");
     const el = document.createElement("div");
-    el.className = "msg " + kind;
-    el.textContent = text;
+    if (kind === "user") {
+      el.className = "msg user";
+      el.textContent = text;
+    } else {
+      el.className = "msg ai md-mode";
+      el.innerHTML =
+        "<div class='agent-status' hidden><span class='st-dot'></span><span class='st-txt'></span></div>" +
+        "<div class='md'></div>" +
+        "<div class='msg-actions'><button class='msg-copy' title='复制这段回复'>⧉ 复制</button></div>";
+      el.dataset.raw = "";
+    }
     wrap.appendChild(el);
     wrap.scrollTop = wrap.scrollHeight;
     return el;
+  }
+
+  function agentLabel(name) {
+    const a = (S.agents || []).find((x) => x.name === name);
+    return a ? a.label : name;
+  }
+
+  function setAIStatus(el, text) {
+    const st = el.querySelector(".agent-status");
+    if (!st) return;
+    if (text) {
+      st.hidden = false;
+      st.querySelector(".st-txt").textContent = text;
+    } else {
+      st.hidden = true;
+    }
+  }
+
+  function setAIText(el, text) {
+    el.dataset.raw = text;
+    const md = el.querySelector(".md");
+    if (md) md.innerHTML = mdToHtml(text);
+    const btn = el.querySelector(".msg-copy");
+    if (btn) btn.onclick = () => {
+      navigator.clipboard.writeText(text).then(() => toast("已复制回复"), () => toast("复制失败", "err"));
+    };
   }
 
   async function sendChat() {
@@ -851,38 +1008,47 @@
     const agent = $("agentSelect").value;
     const aiEl = appendChatMessage("ai", "");
     aiEl.classList.add("running");
+    setAIStatus(aiEl, "正在连接 " + agentLabel(agent) + " …");
     S.chatRunning = true;
     $("chatSend").disabled = true;
     $("chatInput").disabled = true;
+    let raw = "";
     try {
       const res = await api("/api/agent/run", {
         method: "POST",
         body: { project_id: S.current.id, prompt: prompt, agent: agent },
       });
-      aiEl.textContent = "";
       streamEvents("/api/jobs/" + res.job_id + "/stream", (data) => {
-        if (data.type === "line") {
-          aiEl.textContent = (aiEl.textContent ? aiEl.textContent + "\n" : "") + data.text;
+        if (data.type === "status") {
+          setAIStatus(aiEl, data.text);
+          aiEl.classList.remove("running");
+        } else if (data.type === "line") {
+          setAIStatus(aiEl, "");
+          raw = raw ? raw + "\n" + data.text : data.text;
+          setAIText(aiEl, raw);
           aiEl.classList.remove("running");
           $("chatMsgs").scrollTop = $("chatMsgs").scrollHeight;
         }
         if (data.type === "end") {
           aiEl.classList.remove("running");
-          if (!aiEl.textContent && data.error) aiEl.textContent = "（任务失败：" + data.error + "）";
+          setAIStatus(aiEl, "");
+          if (!raw && data.error) setAIText(aiEl, "（任务失败：" + data.error + "）");
           S.chatRunning = false;
           $("chatSend").disabled = false;
           $("chatInput").disabled = false;
         }
       }, () => {
-        if (!aiEl.textContent) aiEl.textContent = "（任务已结束，无输出）";
+        if (!raw) setAIText(aiEl, "（任务已结束，无输出）");
         aiEl.classList.remove("running");
+        setAIStatus(aiEl, "");
         S.chatRunning = false;
         $("chatSend").disabled = false;
         $("chatInput").disabled = false;
       });
     } catch (err) {
-      aiEl.textContent = "（启动失败：" + err.message + "）";
+      setAIText(aiEl, "（启动失败：" + err.message + "）");
       aiEl.classList.remove("running");
+      setAIStatus(aiEl, "");
       S.chatRunning = false;
       $("chatSend").disabled = false;
       $("chatInput").disabled = false;

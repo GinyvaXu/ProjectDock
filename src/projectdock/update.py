@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import os
 import json
 import re
 import shutil
@@ -33,7 +34,8 @@ def version_tuple(v: str) -> tuple:
 
 def _gh(args: list[str], timeout: int = DEFAULT_TIMEOUT) -> subprocess.CompletedProcess:
     return subprocess.run(["gh", *args], capture_output=True, text=True,
-                          encoding="utf-8", errors="replace", timeout=timeout)
+                          encoding="utf-8", errors="replace", timeout=timeout,
+                          creationflags=0x08000000 if os.name == "nt" else 0)
 
 
 def _api_latest(repo: str, token: str = "") -> dict | None:

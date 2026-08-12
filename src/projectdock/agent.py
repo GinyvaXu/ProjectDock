@@ -65,6 +65,12 @@ def system_prompt(project_name: str, project_path: str, type_info: dict | None =
             lines.append("确认策略：以下操作必须先向用户确认并获得明确同意才能执行——" + "、".join(need) + "。")
         else:
             lines.append("确认策略：所有高危操作均允许自动执行（用户已在设置中关闭确认）。")
+    lines.append("")
+    lines.append("## 常见任务解读（先想清楚用户要什么，再动手）")
+    lines.append("- 「整理版本归档 / 归档构建产物 / 把产物归到版本里」= 把根目录 dist/、installer/、build/ 里的构建产物移动归档到 versions/vX.Y.Z/dist/（VERSION 文件里的当前版本号对应的目录；没有就先建），并报告移动了哪些文件。")
+    lines.append("- 「整理版本」但没提 CHANGELOG：不要主动改 CHANGELOG.md，先做上面的归档，最后报告并询问是否需要补更新日志。")
+    lines.append("- 「发布 / 发版 / release」才走完整流程：VERSION -> CHANGELOG -> git 提交打 tag -> （用户确认后）推送/Release。")
+    lines.append("- 用户只让整理文件/归档时，绝不擅自修改 CHANGELOG.md、VERSION 或发版本号。")
     if type_info:
         structure = []
         if type_info.get("dirs"):
@@ -87,8 +93,17 @@ def system_prompt(project_name: str, project_path: str, type_info: dict | None =
 
 
 async def run_agent_task(state, project_path: Path, agent: str, prompt: str, emit) -> None:
-    """全自动执行 agent 任务：任务前备份 -> 流式执行 -> 输出任务报告（操作/变更/git）。"""
+    """全自动执行 agent 任务：任务前备份 -> 流式执行 -> 输出任务报告（操作/变更/git）。
+
+    结构化事件：emit({"type": "status", "text": ...}) 供前端展示 agent 当前活动
+    （正在思考 / 正在调用哪个程序），普通文本仍按输出行处理。
+    """
+    def status(text: str) -> None:
+        emit({"type": "status", "text": text})
+
+    label = AGENTS.get(agent, {}).get("label", agent)
     backup_path = None
+    status(f"正在准备 · {label}（任务前检查备份）…")
     if state.settings.backup:
         try:
             backup_path = backup.make_backup(project_path)
@@ -97,6 +112,7 @@ async def run_agent_task(state, project_path: Path, agent: str, prompt: str, emi
             emit(f"[备份] 跳过（{exc}）")
 
     cmd = resolve_command(build_command(agent, prompt))
+    status(f"正在调用 {label}：{' '.join(cmd[:4])}{' …' if len(cmd) > 4 else ''}")
     try:
         code = await stream_command(emit, cmd, str(project_path))
     except Exception as exc:  # noqa: BLE001
@@ -108,6 +124,7 @@ async def run_agent_task(state, project_path: Path, agent: str, prompt: str, emi
             emit(f"提示：{hint}")
         raise
 
+    status("任务已结束，正在汇总报告…")
     emit("")
     emit("———— 任务报告 ————")
     emit(f"状态：{'完成' if code == 0 else '失败'}（退出码 {code}）")

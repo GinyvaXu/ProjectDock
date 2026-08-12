@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -57,6 +58,12 @@ def _software(title: str, description: str, dirs: str, files: str, git: bool) ->
 2. 重要修改先与用户商讨，不一键直达
 3. 任务执行前先做安全备份（快照进 versions/backups/）
 4. 每轮迭代结束交付报告：改动清单 / 构建产物路径 / 测试建议
+
+## 归档优先（先听懂再动手）
+- 用户说「整理版本归档 / 归档构建产物 / 把产物归到版本里」= 把根目录 `dist/`、`installer/`、`build/` 的构建产物移动归档到 `versions/vX.Y.Z/dist/`（文件名带版本号的按各自版本归档，否则用 VERSION 的当前版本）。
+- 用户只提「归档 / 整理版本」时：**不要擅自修改 CHANGELOG.md、VERSION 或发版本号**；先归档，再报告并询问是否需要补更新日志。
+- 只有用户明确说「发布 / 发版 / release」才走 VERSION -> CHANGELOG -> git tag -> Release 完整流程。
+- 归档用 `python -m projectdock.cli archive <项目名> [--version X.Y.Z] [--confirm]`；归档是移动不是删除，绝不覆盖旧产物。
 
 ## 确认策略（强制）
 - 以下操作必须先获得**用户明确同意**才能执行：推送 GitHub（push）/ 删除文件（delete）/ 创建 GitHub 仓库（github_create）/ 发布 Release（release）/ 归档移动构建产物（archive）
@@ -155,9 +162,11 @@ def dynamic_context(project_path: Path) -> str:
     if git_ok:
         try:
             head = subprocess.run(["git", "log", "--oneline", "-1"], cwd=str(p), capture_output=True,
-                                  text=True, encoding="utf-8", errors="replace", timeout=10).stdout.strip()
+                                  text=True, encoding="utf-8", errors="replace", timeout=10,
+                                  creationflags=0x08000000 if os.name == "nt" else 0).stdout.strip()
             status = subprocess.run(["git", "-c", "core.quotepath=false", "status", "--porcelain"], cwd=str(p),
-                                    capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10).stdout
+                                    capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
+                                    creationflags=0x08000000 if os.name == "nt" else 0).stdout
             dirty = len([ln for ln in status.splitlines() if ln.strip()])
         except (OSError, subprocess.TimeoutExpired):
             pass

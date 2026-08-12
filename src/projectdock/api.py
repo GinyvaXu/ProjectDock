@@ -15,13 +15,13 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import agent as agent_mod
-from . import ailog, builder, compliance, console, contract, github, presets, release, scanner, update, versioning
+from . import ailog, backup, builder, compliance, console, contract, github, presets, release, scanner, update, versioning
 from .agent import AGENTS
 from .config import APP_NAME, APP_VERSION
 from .db import delete_custom_type, delete_project, get_custom_type, get_project, list_custom_types, list_projects, upsert_custom_type, upsert_project
 from .models import (AGENT_NAMES, PROJECT_TYPES, THEMES, AILogCreate, AgentBatch, AgentRun,
-                     BuildRun, ComplianceFix, CustomTypeCreate, OpenPath, ProjectCreate,
-                     ProjectImport, ProjectInit, ReleaseRun, SettingsUpdate, UpdateInstall)
+                     BackupRestore, BuildRun, ComplianceFix, CustomTypeCreate, OpenPath,
+                     ProjectCreate, ProjectImport, ProjectInit, ReleaseRun, SettingsUpdate, UpdateInstall)
 from .state import AppState
 
 def _locate_web_dir() -> Path:
@@ -325,9 +325,11 @@ def create_app(state: AppState) -> FastAPI:
             return {"has_git": False, "head": None, "dirty": False, "files": []}
         try:
             head = subprocess.run(["git", "log", "--oneline", "-1"], cwd=str(p), capture_output=True,
-                                   text=True, encoding="utf-8", errors="replace", timeout=15).stdout.strip()
+                                   text=True, encoding="utf-8", errors="replace", timeout=15,
+                                   creationflags=0x08000000 if os.name == "nt" else 0).stdout.strip()
             status = subprocess.run(["git", "-c", "core.quotepath=false", "status", "--porcelain"], cwd=str(p), capture_output=True,
-                                    text=True, encoding="utf-8", errors="replace", timeout=15).stdout.splitlines()
+                                    text=True, encoding="utf-8", errors="replace", timeout=15,
+                                    creationflags=0x08000000 if os.name == "nt" else 0).stdout.splitlines()
         except (subprocess.TimeoutExpired, OSError):
             return {"has_git": True, "head": None, "dirty": False, "files": []}
         return {"has_git": True, "head": head or None, "dirty": bool(status),
@@ -386,6 +388,43 @@ def create_app(state: AppState) -> FastAPI:
         if scope == "all":
             return scanner.scan_documents(Path(proj["path"]))
         return scanner.find_documents(Path(proj["path"]))
+
+    @api.get("/projects/{pid}/backups")
+    def list_backups(pid: str) -> list[dict]:
+        proj = _resolve_project(pid)
+        return backup.list_backups(Path(proj["path"]))
+
+    @api.post("/projects/{pid}/backups", status_code=201)
+    def create_backup(pid: str) -> dict:
+        proj = _resolve_project(pid)
+        try:
+            path = backup.make_backup(Path(proj["path"]))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        st = path.stat()
+        return {"ok": True, "name": path.name, "path": str(path), "size": st.st_size}
+
+    @api.post("/projects/{pid}/backups/restore")
+    def restore_backup(pid: str, payload: BackupRestore) -> dict:
+        proj = _resolve_project(pid)
+        if not payload.confirm:
+            raise HTTPException(status_code=400, detail="恢复会覆盖当前项目文件，请确认后重试")
+        try:
+            result = backup.restore_backup(Path(proj["path"]), payload.name)
+        except (ValueError, OSError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        return {"ok": True, **result}
+
+    @api.delete("/projects/{pid}/backups/{name}")
+    def remove_backup(pid: str, name: str) -> dict:
+        proj = _resolve_project(pid)
+        try:
+            deleted = backup.delete_backup(Path(proj["path"]), name)
+        except (ValueError, OSError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        if not deleted:
+            raise HTTPException(status_code=404, detail="备份不存在")
+        return {"ok": True}
 
     @api.post("/projects/{pid}/open-file")
     def open_file(pid: str, payload: OpenPath) -> dict:

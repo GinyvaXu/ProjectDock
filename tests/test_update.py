@@ -160,3 +160,17 @@ def test_latest_release_none_when_no_gh_and_no_api(monkeypatch):
     monkeypatch.setattr(update.shutil, "which", lambda name: None)
     monkeypatch.setattr(update, "_api_latest", lambda repo, token="": None)
     assert update.latest_release("GinyvaXu/ProjectDock") is None
+
+
+def test_gh_uses_os_import(monkeypatch):
+    """回归：_gh 用 os.name 构造 creationflags，os 必须已导入（曾导致 NameError/500）。"""
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["kwargs"] = kwargs
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout="{}", stderr="")
+
+    monkeypatch.setattr(update.subprocess, "run", fake_run)
+    r = update._gh(["release", "view"])
+    assert r.returncode == 0
+    assert "creationflags" in captured["kwargs"]

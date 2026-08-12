@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -20,7 +21,8 @@ def has_remote(project_path: Path) -> bool:
     if not (project_path / ".git").is_dir():
         return False
     try:
-        r = subprocess.run(["git", "remote"], cwd=str(project_path), capture_output=True, text=True, timeout=15)
+        r = subprocess.run(["git", "remote"], cwd=str(project_path), capture_output=True, text=True, timeout=15,
+                        creationflags=0x08000000 if os.name == "nt" else 0)
         return "origin" in r.stdout.split()
     except (subprocess.TimeoutExpired, OSError):
         return False
@@ -34,7 +36,8 @@ def create_repo(project_path: Path, name: str, visibility: str = "private", owne
     flag = "--private" if visibility == "private" else "--public"
     cmd = ["gh", "repo", "create", full, flag, "--source=.", "--remote=origin", "--push"]
     try:
-        r = subprocess.run(cmd, cwd=str(project_path), capture_output=True, text=True, timeout=180)
+        r = subprocess.run(cmd, cwd=str(project_path), capture_output=True, text=True, timeout=180,
+                        creationflags=0x08000000 if os.name == "nt" else 0)
         if r.returncode == 0:
             return {"ok": True, "message": r.stdout.strip() or f"已创建并推送 {full}"}
         return {"ok": False, "message": (r.stderr or r.stdout).strip() or "gh repo create 失败"}

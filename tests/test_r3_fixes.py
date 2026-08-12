@@ -80,7 +80,7 @@ def test_create_project_github_without_preset(client, monkeypatch):
 def test_agent_start_failure_emits_report(tmp_path, monkeypatch):
     """agent 命令无法启动时也应输出任务报告，并向上抛出异常。"""
     monkeypatch.setitem(agent_mod.AGENTS["pi"], "command", ["no-such-agent-cmd-xyz-123", "-p", "{prompt}"])
-    lines: list[str] = []
+    lines: list = []
     state = types.SimpleNamespace(settings=types.SimpleNamespace(backup=False))
 
     async def run():
@@ -88,7 +88,9 @@ def test_agent_start_failure_emits_report(tmp_path, monkeypatch):
 
     with pytest.raises(Exception):
         asyncio.run(run())
-    report = "\n".join(lines)
+    # emit 现在支持结构化状态事件（dict）与普通文本（str）
+    report = "\n".join(x for x in lines if isinstance(x, str))
+    assert any(isinstance(x, dict) and x.get("type") == "status" for x in lines)
     assert "任务报告" in report
     assert "失败" in report
 
