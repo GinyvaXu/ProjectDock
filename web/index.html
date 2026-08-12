@@ -35,9 +35,9 @@
     </header>
     <section class="grid" id="grid"></section>
     <section class="empty" id="empty" hidden>
-      <div class="empty-ico">▢</div>
-      <p>这里还没有项目</p>
-      <p class="empty-sub">点击右上角「新建项目」开始，或用「导入项目」纳入已有文件夹</p>
+      <div class="empty-ico" id="emptyIco">▢</div>
+      <p id="emptyTitle">这里还没有项目</p>
+      <p class="empty-sub" id="emptySub">点击右上角「新建项目」开始，或用「导入项目」纳入已有文件夹</p>
     </section>
   </main>
 
@@ -160,7 +160,13 @@
       <form id="releaseForm">
         <div class="types-grid">
           <label class="field"><span>当前版本</span><input name="current" readonly></label>
-          <label class="field"><span>新版本号</span><input name="version" required placeholder="1.2.3"></label>
+          <label class="field"><span>新版本号</span><input name="version" required placeholder="1.2.3">
+            <div class="ver-bumps">
+              <button type="button" class="btn btn-sm" data-bump="patch">补丁 +0.0.1</button>
+              <button type="button" class="btn btn-sm" data-bump="minor">次版本 +0.1.0</button>
+              <button type="button" class="btn btn-sm" data-bump="major">主版本 +1.0.0</button>
+            </div>
+          </label>
         </div>
         <label class="field"><span>更新日志（Added）</span><textarea name="changelog" rows="4" placeholder="- 新功能描述，每行一条"></textarea></label>
         <label class="field"><span>构建脚本（可选）</span><select name="build"><option value="">不构建</option></select></label>

@@ -98,7 +98,15 @@
   function renderGrid() {
     const list = filtered();
     const grid = $("grid");
+    const noProjects = S.projects.length === 0;
     $("empty").hidden = list.length > 0;
+    if (!list.length) {
+      $("emptyIco").textContent = noProjects ? "▢" : "⌕";
+      $("emptyTitle").textContent = noProjects ? "这里还没有项目" : "没有匹配的项目";
+      $("emptySub").textContent = noProjects
+        ? "点击右上角「新建项目」开始，或用「导入项目」纳入已有文件夹"
+        : "换个关键词或类型筛选试试";
+    }
     grid.innerHTML = "";
     if (!list.length) return;
     const frag = document.createDocumentFragment();
@@ -178,8 +186,11 @@
   function showTab(tab) {
     S.currentTab = tab;
     document.querySelectorAll(".tab").forEach((el) => el.classList.toggle("active", el.dataset.tab === tab));
-    document.querySelectorAll(".panel").forEach((el) => el.classList.remove("active"));
-    $("panel-" + tab).classList.add("active");
+    document.querySelectorAll(".panel").forEach((el) => el.classList.remove("active", "panel-in"));
+    const panel = $("panel-" + tab);
+    panel.classList.add("active");
+    void panel.offsetWidth;
+    panel.classList.add("panel-in");
     if (tab === "versions" && S.versions) renderVersions();
   }
 
@@ -195,6 +206,7 @@
         "<div class='meta-row'><span class='k'>Git</span><span class='v'>" + (proj.has_git ? "已初始化 ✓" : "未初始化") + "</span></div>" +
         (proj.created_at ? "<div class='meta-row'><span class='k'>纳入时间</span><span class='v'>" + esc(proj.created_at) + "</span></div>" : "") +
       "</div>" +
+      "<div class='git-panel'><div class='git-head'><h4>Git 状态</h4><button class='btn btn-sm' id='btnGitRefresh'>刷新</button></div><div class='git-body' id='gitBody'>加载中…</div></div>" +
       "<div class='action-row'>" +
         "<button class='btn btn-sm' data-act='open'>打开文件夹</button>" +
         "<button class='btn btn-sm' data-act='copy'>复制路径</button>" +
@@ -204,6 +216,34 @@
     $("panel-overview").querySelectorAll("[data-act]").forEach((btn) => {
       btn.addEventListener("click", () => handleOverviewAction(btn.dataset.act));
     });
+    const gitRefresh = $("btnGitRefresh");
+    if (gitRefresh) gitRefresh.addEventListener("click", () => loadGitStatus(S.current.id));
+    loadGitStatus(proj.id);
+  }
+
+  async function loadGitStatus(id) {
+    const body = $("gitBody");
+    if (!body) return;
+    body.innerHTML = "加载中…";
+    try {
+      const st = await api("/api/projects/" + encodeURIComponent(id) + "/git-status");
+      if (!st.has_git) {
+        body.innerHTML = "<div class='git-row'><span class='git-dot no'></span><span>该项目未初始化 git（可点上方「预设初始化」）</span></div>";
+        return;
+      }
+      let chg = "";
+      if (st.dirty && st.files.length) {
+        chg = "<div class='chg-list'>" + st.files.slice(0, 8).map((f) => "<div class='chg-item'>" + esc(f) + "</div>").join("") +
+          (st.files.length > 8 ? "<div class='chg-item'>… 共 " + st.files.length + " 项变更</div>" : "") + "</div>";
+      }
+      body.innerHTML =
+        "<div class='git-row'><span class='git-dot " + (st.dirty ? "dirty" : "clean") + "'></span>" +
+        (st.dirty ? "<span class='git-txt-warn'>工作区有 " + st.files.length + " 项变更</span>" : "<span>工作区干净</span>") + "</div>" +
+        (st.head ? "<div class='git-row'><span class='k'>最新提交</span><span class='v mono'>" + esc(st.head) + "</span></div>" : "") +
+        chg;
+    } catch (err) {
+      body.innerHTML = "<div class='git-row'>读取失败：" + esc(err.message) + "</div>";
+    }
   }
 
   async function handleOverviewAction(act) {
@@ -452,6 +492,9 @@
         if (data.type === "end") {
           aiEl.classList.remove("running");
           if (!aiEl.textContent && data.error) aiEl.textContent = "（任务失败：" + data.error + "）";
+          S.chatRunning = false;
+          $("chatSend").disabled = false;
+          $("chatInput").disabled = false;
         }
       }, () => {
         if (!aiEl.textContent) aiEl.textContent = "（任务已结束，无输出）";
@@ -683,6 +726,12 @@
     $("settingsForm").addEventListener("submit", saveSettings);
     $("typesForm").addEventListener("submit", addType);
     $("releaseForm").addEventListener("submit", startRelease);
+    document.querySelectorAll("[data-bump]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const form = $("releaseForm");
+        form.elements.version.value = bumpVersion(form.elements.current.value, btn.dataset.bump);
+      });
+    });
     $("chatSend").addEventListener("click", sendChat);
     $("chatInput").addEventListener("keydown", (e) => { if (e.key === "Enter") sendChat(); });
     window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
