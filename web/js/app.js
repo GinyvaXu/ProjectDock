@@ -25,6 +25,14 @@
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const fmtSize = (n) => (n == null ? "" : n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : n >= 1024 ? (n / 1024).toFixed(1) + " KB" : n + " B");
+  const TYPE_ICONS = { "软件": "💻", "网站": "🌐", "游戏": "🎮", "PPT": "📊", "文稿": "📄", "脚本": "🐍", "其他": "📁" };
+  const typeIcon = (p) => TYPE_ICONS[p.type] || "📁";
+  function logoHTML(p) {
+    const emoji = "<span class='logo-fallback'>" + typeIcon(p) + "</span>";
+    if (!p.has_logo) return emoji;
+    return "<span class='logo-wrap'>" + emoji +
+      "<img class='proj-logo' src='/api/projects/" + encodeURIComponent(p.id) + "/logo' alt='' onerror='this.remove()'></span>";
+  }
 
   /* ============ 初始化 ============ */
   async function init() {
@@ -82,11 +90,14 @@
 
   function cardHTML(p) {
     return "<div class='card' data-id='" + esc(p.id) + "' style='opacity:0'>" +
-      "<div class='card-top'>" +
-        "<span class='badge " + esc(p.type) + "'>" + esc(p.type) + "</span>" +
-        (p.version ? "<span class='card-version'>v" + esc(p.version) + "</span>" : "") +
+      "<div class='card-head'>" +
+        "<span class='card-logo type-" + esc(p.type) + "'>" + logoHTML(p) + "</span>" +
+        "<div class='card-head-text'>" +
+          "<h3 class='card-title'>" + esc(p.title) + "</h3>" +
+          "<div class='card-top'><span class='badge " + esc(p.type) + "'>" + esc(p.type) + "</span>" +
+          (p.version ? "<span class='card-version'>v" + esc(p.version) + "</span>" : "") + "</div>" +
+        "</div>" +
       "</div>" +
-      "<h3 class='card-title'>" + esc(p.title) + "</h3>" +
       "<p class='card-desc'>" + esc(p.description || "（暂无描述）") + "</p>" +
       "<div class='card-meta'>" +
         "<span class='card-path'>" + esc(p.id) + "</span>" +
@@ -140,6 +151,8 @@
     $("drawerName").textContent = proj.title;
     $("drawerType").textContent = proj.type;
     $("drawerType").className = "badge " + esc(proj.type);
+    $("drawerLogo").className = "drawer-logo type-" + esc(proj.type);
+    $("drawerLogo").innerHTML = logoHTML(proj);
     $("drawerPath").textContent = proj.path;
     $("drawerPath").title = proj.path;
     showTab("overview");
@@ -207,6 +220,7 @@
         (proj.created_at ? "<div class='meta-row'><span class='k'>纳入时间</span><span class='v'>" + esc(proj.created_at) + "</span></div>" : "") +
       "</div>" +
       "<div class='git-panel'><div class='git-head'><h4>Git 状态</h4><button class='btn btn-sm' id='btnGitRefresh'>刷新</button></div><div class='git-body' id='gitBody'>加载中…</div></div>" +
+      "<div class='doc-panel'><div class='git-head'><h4>项目文档</h4><button class='btn btn-sm' id='btnDocRefresh'>刷新</button></div><div class='doc-list' id='docList'>加载中…</div></div>" +
       "<div class='action-row'>" +
         "<button class='btn btn-sm' data-act='open'>打开文件夹</button>" +
         "<button class='btn btn-sm' data-act='copy'>复制路径</button>" +
@@ -218,7 +232,10 @@
     });
     const gitRefresh = $("btnGitRefresh");
     if (gitRefresh) gitRefresh.addEventListener("click", () => loadGitStatus(S.current.id));
+    const docRefresh = $("btnDocRefresh");
+    if (docRefresh) docRefresh.addEventListener("click", () => loadDocuments(S.current.id));
     loadGitStatus(proj.id);
+    loadDocuments(proj.id);
   }
 
   async function loadGitStatus(id) {
@@ -243,6 +260,47 @@
         chg;
     } catch (err) {
       body.innerHTML = "<div class='git-row'>读取失败：" + esc(err.message) + "</div>";
+    }
+  }
+
+  async function openPath(path) {
+    if (!S.current) return;
+    try {
+      await api("/api/projects/" + encodeURIComponent(S.current.id) + "/open-file", { method: "POST", body: { path: path } });
+    } catch (err) { toast(err.message, "err"); }
+  }
+
+  async function revealPath(path) {
+    if (!S.current) return;
+    try {
+      await api("/api/projects/" + encodeURIComponent(S.current.id) + "/reveal-file", { method: "POST", body: { path: path } });
+    } catch (err) { toast(err.message, "err"); }
+  }
+
+  function bindPathActions(scope) {
+    scope.querySelectorAll("[data-open]").forEach((btn) => btn.addEventListener("click", () => openPath(btn.dataset.open)));
+    scope.querySelectorAll("[data-reveal]").forEach((btn) => btn.addEventListener("click", () => revealPath(btn.dataset.reveal)));
+  }
+
+  async function loadDocuments(id) {
+    const list = $("docList");
+    if (!list) return;
+    list.innerHTML = "加载中…";
+    try {
+      const docs = await api("/api/projects/" + encodeURIComponent(id) + "/documents");
+      if (!docs.length) {
+        list.innerHTML = "<div class='git-row'><span>未找到计划书/企划书等文档（支持 README、计划书、企划书、方案、设计、需求等）</span></div>";
+        return;
+      }
+      list.innerHTML = docs.map((d) =>
+        "<div class='doc-item'><span class='doc-name'>" + esc(d.name) + "</span>" +
+        "<span class='spacer'></span>" +
+        "<button class='btn btn-sm' data-open='" + esc(d.path) + "'>打开</button>" +
+        "<button class='btn btn-sm' data-reveal='" + esc(d.path) + "'>位置</button></div>"
+      ).join("");
+      bindPathActions(list);
+    } catch (err) {
+      list.innerHTML = "<div class='git-row'>读取失败：" + esc(err.message) + "</div>";
     }
   }
 
@@ -308,11 +366,17 @@
       html += "<div class='build-log'>没有发现 versions/ 或 dist/ 构建产物</div>";
     } else {
       versions.artifacts.versions.forEach((v) => {
-        html += "<div class='cl-entry'><h5>" + esc(v.name) + (v.has_src ? " · 含源码快照" : "") + "</h5>";
+        html += "<div class='cl-entry'><h5>" + esc(v.name) + (v.has_src ? " · 含源码快照" : "") + "</h5>" +
+          "<div class='artifact'><span class='a-name'>版本目录</span><span class='spacer'></span>" +
+          "<button class='btn btn-sm' data-open='" + esc(v.path) + "'>打开文件夹</button>" +
+          "<button class='btn btn-sm' data-reveal='" + esc(v.path) + "'>位置</button></div>";
         if (v.artifacts.length) {
           html += v.artifacts.map((f) =>
             "<div class='artifact'><span class='a-name'>" + esc(f.name) + "</span><span class='a-size'>" + fmtSize(f.size) + "</span>" +
-            "<span class='spacer'></span><button class='btn btn-sm' data-copy='" + esc(f.path) + "'>复制路径</button></div>"
+            "<span class='spacer'></span>" +
+            "<button class='btn btn-sm' data-open='" + esc(f.path) + "'>打开</button>" +
+            "<button class='btn btn-sm' data-reveal='" + esc(f.path) + "'>位置</button>" +
+            "<button class='btn btn-sm' data-copy='" + esc(f.path) + "'>复制</button></div>"
           ).join("");
         } else {
           html += "<div class='build-log' style='margin-top:6px'>（无 dist 产物）</div>";
@@ -321,7 +385,10 @@
       });
       versions.artifacts.dist.forEach((f) => {
         html += "<div class='artifact'><span class='a-name'>" + esc(f.name) + "</span><span class='a-size'>" + fmtSize(f.size) + "</span>" +
-          "<span class='spacer'></span><button class='btn btn-sm' data-copy='" + esc(f.path) + "'>复制路径</button></div>";
+          "<span class='spacer'></span>" +
+          "<button class='btn btn-sm' data-open='" + esc(f.path) + "'>打开</button>" +
+          "<button class='btn btn-sm' data-reveal='" + esc(f.path) + "'>位置</button>" +
+          "<button class='btn btn-sm' data-copy='" + esc(f.path) + "'>复制</button></div>";
       });
     }
     html += "</div>";
@@ -339,6 +406,7 @@
 
     const panel = $("panel-versions");
     panel.innerHTML = html;
+    bindPathActions(panel);
     panel.querySelectorAll("[data-copy]").forEach((btn) => {
       btn.addEventListener("click", () => {
         navigator.clipboard.writeText(btn.dataset.copy);

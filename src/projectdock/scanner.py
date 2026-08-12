@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -77,8 +78,67 @@ def scan_root(root: Path, db_rows: dict[str, dict] | None = None) -> list[dict]:
             "updated_at": db.get("updated_at", ""),
             "version": read_version(child),
             "has_git": (child / ".git").exists(),
+            "has_logo": find_logo(child) is not None,
         })
     return result
+
+
+LOGO_CANDIDATES = [
+    "logo.png", "logo.jpg", "logo.jpeg", "logo.webp", "logo.svg",
+    "icon.png", "icon.jpg", "icon.jpeg", "icon.ico", "appicon.png",
+    "favicon.png", "favicon.ico", "图标.png", "图标.jpg",
+    "assets/logo.png", "assets/icon.png", "static/logo.png", "static/icon.png",
+    "images/logo.png", "img/logo.png", "src/logo.png", "src/icon.png",
+]
+
+DOC_SKIP_TOP = {".git", "versions", "dist", "build", ".venv", "venv", "__pycache__", "node_modules", "logs", "installer", ".idea", ".vscode"}
+DOC_EXTENSIONS = {".md", ".txt", ".doc", ".docx", ".pdf", ".pptx", ".ppt", ".xlsx", ".xls"}
+DOC_KEYWORDS = ("计划书", "企划书", "方案", "设计", "需求", "说明书", "提案", "立项", "可行性")
+
+
+def find_logo(project_path: Path) -> Path | None:
+    """在项目内查找 logo/图标文件，找不到返回 None。"""
+    for rel in LOGO_CANDIDATES:
+        cand = project_path / rel
+        if cand.is_file():
+            return cand
+    return None
+
+
+def find_documents(project_path: Path, max_depth: int = 2) -> list[dict]:
+    """扫描项目内的计划书/企划书/方案/设计等文档（根目录 + 有限深度子目录）。"""
+    docs: list[dict] = []
+    if not project_path.is_dir():
+        return docs
+    for dirpath, dirnames, filenames in os.walk(project_path):
+        rel = Path(dirpath).relative_to(project_path)
+        depth = len(rel.parts)
+        if rel.parts and rel.parts[0] in DOC_SKIP_TOP:
+            dirnames[:] = []
+            continue
+        if depth > max_depth:
+            dirnames[:] = []
+            continue
+        for name in filenames:
+            lower = name.lower()
+            if lower == "readme.md":
+                docs.append({"name": name, "path": str(Path(dirpath) / name), "kind": "readme"})
+                continue
+            if Path(name).suffix.lower() in DOC_EXTENSIONS and any(k in name for k in DOC_KEYWORDS):
+                docs.append({"name": name, "path": str(Path(dirpath) / name), "kind": Path(name).suffix.lower().lstrip(".")})
+
+    def sort_key(d: dict):
+        n = d["name"].lower()
+        if n == "readme.md":
+            return (0, n)
+        if "计划书" in d["name"] or "企划书" in d["name"]:
+            return (1, n)
+        if any(k in d["name"] for k in ("方案", "设计", "需求", "说明书", "提案", "立项")):
+            return (2, n)
+        return (3, n)
+
+    docs.sort(key=sort_key)
+    return docs
 
 
 def import_folder(conn, folder_path: Path, ptype: str, description: str) -> dict:

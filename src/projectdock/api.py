@@ -6,11 +6,12 @@ import os
 import queue as queue_module
 import subprocess
 import sys
+from mimetypes import guess_type
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import agent as agent_mod
@@ -19,7 +20,7 @@ from .agent import AGENTS
 from .config import APP_NAME, APP_VERSION
 from .db import delete_custom_type, delete_project, get_custom_type, get_project, list_custom_types, list_projects, upsert_custom_type, upsert_project
 from .models import (AGENT_NAMES, PROJECT_TYPES, THEMES, AgentRun, BuildRun,
-                     CustomTypeCreate, ProjectCreate, ProjectImport, ProjectInit,
+                     CustomTypeCreate, OpenPath, ProjectCreate, ProjectImport, ProjectInit,
                      ReleaseRun, SettingsUpdate)
 from .state import AppState
 
@@ -177,6 +178,7 @@ def create_app(state: AppState) -> FastAPI:
                 row["title"] = parsed[2] if parsed else row["id"]
                 row["version"] = versioning.read_version(Path(row["path"]))
                 row["has_git"] = (Path(row["path"]) / ".git").exists()
+                row["has_logo"] = scanner.find_logo(Path(row["path"])) is not None
                 projects.append(row)
         return projects
 
@@ -301,6 +303,49 @@ def create_app(state: AppState) -> FastAPI:
         job = state.jobs.start_task(f"发布 v{version}",
                                     lambda emit: release.run_release(state, Path(proj["path"]), cfg, emit))
         return {"job_id": job.id, "version": version}
+
+    def _assert_inside(project_path: Path, target: str) -> Path:
+        p = Path(target).expanduser().resolve()
+        base = Path(project_path).resolve()
+        if not p.is_file() and not p.is_dir():
+            raise HTTPException(status_code=404, detail="文件或目录不存在")
+        try:
+            p.relative_to(base)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="路径不在项目目录内")
+        return p
+
+    @api.get("/projects/{pid}/logo")
+    def project_logo(pid: str):
+        proj = _resolve_project(pid)
+        logo = scanner.find_logo(Path(proj["path"]))
+        if not logo:
+            raise HTTPException(status_code=404, detail="该项目没有 logo")
+        media = guess_type(str(logo))[0] or "application/octet-stream"
+        return FileResponse(str(logo), media_type=media)
+
+    @api.get("/projects/{pid}/documents")
+    def list_documents(pid: str) -> list[dict]:
+        proj = _resolve_project(pid)
+        return scanner.find_documents(Path(proj["path"]))
+
+    @api.post("/projects/{pid}/open-file")
+    def open_file(pid: str, payload: OpenPath) -> dict:
+        proj = _resolve_project(pid)
+        target = _assert_inside(Path(proj["path"]), payload.path)
+        if os.name != "nt":
+            raise HTTPException(status_code=400, detail="当前平台暂不支持打开文件")
+        os.startfile(str(target))  # type: ignore[attr-defined]
+        return {"ok": True, "path": str(target)}
+
+    @api.post("/projects/{pid}/reveal-file")
+    def reveal_file(pid: str, payload: OpenPath) -> dict:
+        proj = _resolve_project(pid)
+        target = _assert_inside(Path(proj["path"]), payload.path)
+        if os.name != "nt":
+            raise HTTPException(status_code=400, detail="当前平台暂不支持")
+        subprocess.Popen(["explorer", "/select,", str(target)])
+        return {"ok": True, "path": str(target)}
 
     @api.post("/projects/{pid}/open")
     def open_project(pid: str) -> dict:

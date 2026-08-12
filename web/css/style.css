@@ -147,6 +147,31 @@ input, select, textarea { font-family: inherit; font-size: 14px; color: var(--te
 .btn-sm { padding: 6px 12px; font-size: 12.5px; border-radius: 10px; }
 .btn:disabled { opacity: .5; cursor: default; transform: none; }
 
+/* 项目 Logo */
+.card-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+.card-head-text { flex: 1; min-width: 0; }
+.card-head .card-top { margin-bottom: 0; margin-top: 4px; }
+.card-logo, .drawer-logo { border-radius: 13px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative; }
+.card-logo { width: 46px; height: 46px; }
+.drawer-logo { width: 54px; height: 54px; border-radius: 14px; margin-top: 2px; }
+.logo-wrap { position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+.logo-fallback { font-size: 24px; line-height: 1; }
+.drawer-logo .logo-fallback { font-size: 27px; }
+.proj-logo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.card-logo.type-软件, .drawer-logo.type-软件 { background: linear-gradient(135deg, #0a84ff, #5e5ce6); }
+.card-logo.type-网站, .drawer-logo.type-网站 { background: linear-gradient(135deg, #34c759, #30b0c7); }
+.card-logo.type-游戏, .drawer-logo.type-游戏 { background: linear-gradient(135deg, #af52de, #ff2d55); }
+.card-logo.type-PPT, .drawer-logo.type-PPT { background: linear-gradient(135deg, #ff9500, #ff3b30); }
+.card-logo.type-文稿, .drawer-logo.type-文稿 { background: linear-gradient(135deg, #30d158, #64d2ff); }
+.card-logo.type-脚本, .drawer-logo.type-脚本 { background: linear-gradient(135deg, #5e5ce6, #0a84ff); }
+.card-logo.type-其他, .drawer-logo.type-其他 { background: linear-gradient(135deg, #8e8e93, #636366); }
+
+/* 项目文档面板 */
+.doc-panel { margin-top: 14px; border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; background: var(--card); }
+.doc-list { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.doc-item { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.doc-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+
 /* 项目网格 */
 .grid {
   flex: 1; overflow-y: auto; padding: 22px 24px;

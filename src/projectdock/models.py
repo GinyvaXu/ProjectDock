@@ -47,6 +47,10 @@ class CustomTypeCreate(BaseModel):
     git: bool = True
 
 
+class OpenPath(BaseModel):
+    path: str = Field(min_length=1)
+
+
 class ReleaseRun(BaseModel):
     version: str = Field(min_length=1)
     changelog: str = ""
