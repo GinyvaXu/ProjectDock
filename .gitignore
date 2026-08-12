@@ -1,0 +1,38 @@
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# 虚拟环境
+.venv/
+venv/
+
+# 构建与归档（本地保留，不上传）
+build/
+dist/
+versions/
+installer/
+*.log
+
+# 本地配置与密钥
+.env
+*.env
+
+# IDE
+.idea/
+.vscode/
+
+# 测试数据与临时文件
+tests/data/
+smoke*/
+cap_*
+临时脚本/
+*.tmp
+
+# 日志
+logs/
+
+# �����ʱ���
+.coverage
+htmlcov/
+
