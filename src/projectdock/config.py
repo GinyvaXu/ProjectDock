@@ -2,10 +2,24 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from pathlib import Path
 
 APP_NAME = "ProjectDock"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
+
+
+def _gh_logged_in() -> bool:
+    """是否检测到 gh CLI 登录态（settings 无令牌时的兜底）。"""
+    if not shutil.which("gh"):
+        return False
+    try:
+        import subprocess
+        r = subprocess.run(["gh", "auth", "status"], capture_output=True, text=True, timeout=10,
+                           creationflags=0x08000000 if os.name == "nt" else 0)
+        return r.returncode == 0
+    except Exception:
+        return False
 
 
 def app_data_dir() -> Path:
@@ -45,6 +59,7 @@ class Settings:
         "confirm_policy": {"push": True, "delete": True, "github_create": True,
                            "release": True, "archive": True},
         "update_repo": "GinyvaXu/ProjectDock",
+        "github_token": "",
     }
 
     def __init__(self, data_dir: Path | None = None):
@@ -106,6 +121,10 @@ class Settings:
         return bool(self.confirm_policy.get(key, True))
 
     @property
+    def github_token(self) -> str:
+        return str(self._data.get("github_token") or "").strip()
+
+    @property
     def update_repo(self) -> str:
         return str(self._data.get("update_repo") or "GinyvaXu/ProjectDock").strip() or "GinyvaXu/ProjectDock"
 
@@ -120,6 +139,7 @@ class Settings:
             "type_tabs": self.type_tabs,
             "confirm_policy": self.confirm_policy,
             "update_repo": self.update_repo,
+            "github_logged_in": bool(self.github_token) or _gh_logged_in(),
         }
 
     def update(self, **kwargs) -> dict:
@@ -139,6 +159,8 @@ class Settings:
                     merged = dict(self.DEFAULTS["confirm_policy"])
                     merged.update({k: bool(v) for k, v in value.items()})
                     self._data[key] = merged
+            elif key == "github_token":
+                self._data[key] = str(value or "").strip()
             elif key == "update_repo":
                 self._data[key] = str(value or "").strip() or "GinyvaXu/ProjectDock"
         self.save()

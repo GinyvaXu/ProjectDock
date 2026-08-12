@@ -59,14 +59,15 @@ def _migrate(conn: sqlite3.Connection) -> None:
 
 
 def upsert_project(conn, project_id: str, name: str, ptype: str, path: str,
-                   description: str = "", imported: bool = False, excluded: bool = False) -> None:
+                   description: str = "", imported: bool = False, excluded: bool = False,
+                   pinned: bool = False) -> None:
     with _DB_LOCK:
         ts = now()
     # 同路径被其它 id 占用（文件夹重命名/移动）：先清除旧注册，避免 UNIQUE(path) 冲突
         conn.execute("DELETE FROM projects WHERE path = ? AND id <> ?", (str(path), project_id))
         conn.execute(
-            """INSERT INTO projects (id, name, type, path, description, created_at, updated_at, imported, excluded)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """INSERT INTO projects (id, name, type, path, description, created_at, updated_at, imported, excluded, pinned)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET
                name = excluded.name,
                type = excluded.type,
@@ -74,8 +75,10 @@ def upsert_project(conn, project_id: str, name: str, ptype: str, path: str,
                description = excluded.description,
                updated_at = excluded.updated_at,
                imported = excluded.imported,
-               excluded = excluded.excluded""",
-            (project_id, name, ptype, str(path), description, ts, ts, 1 if imported else 0, 1 if excluded else 0),
+               excluded = excluded.excluded,
+               pinned = excluded.pinned""",
+            (project_id, name, ptype, str(path), description, ts, ts, 1 if imported else 0, 1 if excluded else 0,
+             1 if pinned else 0),
         )
         conn.commit()
 

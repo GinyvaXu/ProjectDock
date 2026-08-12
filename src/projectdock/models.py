@@ -104,3 +104,26 @@ class IconPayload(BaseModel):
     mode: str = "auto"
     symbol: int | None = None
     data: str = ""
+
+
+class ProjectUpdate(BaseModel):
+    """编辑项目信息：name 会重命名文件夹标题，type 会更新类型（重命名前缀），description 存库。"""
+    name: str | None = Field(default=None, max_length=60)
+    type: str | None = None
+    description: str | None = None
+
+
+class GithubAuthPayload(BaseModel):
+    token: str = Field(min_length=1, max_length=200)
+
+
+class GithubCreatePayload(BaseModel):
+    visibility: str = "private"
+
+
+class GithubSetRemotePayload(BaseModel):
+    url: str = Field(min_length=1, max_length=300)
+
+
+class OpenUrl(BaseModel):
+    url: str = Field(min_length=1, max_length=500)

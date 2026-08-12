@@ -149,20 +149,25 @@ TAB_LABELS = {
     "docs": "文稿版本",
     "ai": "AI 管理",
     "ailog": "AI 日志",
+    "github": "GitHub 仓库",
 }
 
 # 各类型的默认菜单模板（可在设置中覆盖）
 DEFAULT_TABS = {
-    "软件": ["overview", "versions", "compliance", "ai", "ailog"],
-    "网站": ["overview", "versions", "compliance", "ai", "ailog"],
-    "游戏": ["overview", "versions", "compliance", "ai", "ailog"],
-    "脚本": ["overview", "versions", "compliance", "ai", "ailog"],
-    "其他": ["overview", "versions", "compliance", "ai", "ailog"],
+    "软件": ["overview", "github", "versions", "compliance", "ai", "ailog"],
+    "网站": ["overview", "github", "versions", "compliance", "ai", "ailog"],
+    "游戏": ["overview", "github", "versions", "compliance", "ai", "ailog"],
+    "脚本": ["overview", "github", "versions", "compliance", "ai", "ailog"],
+    "其他": ["overview", "github", "versions", "compliance", "ai", "ailog"],
     "PPT": ["overview", "docs", "ai", "ailog"],
     "文稿": ["overview", "docs", "ai", "ailog"],
 }
 
 ALL_TAB_KEYS = tuple(TAB_LABELS)
+
+
+# 新版本新增的默认 Tab（仅自动并入这些，尊重用户对其它 Tab 的删除）
+NEW_TABS = ("github",)
 
 
 def tabs_for_type(ptype: str, override: dict | None = None) -> list[str]:
@@ -176,6 +181,14 @@ def tabs_for_type(ptype: str, override: dict | None = None) -> list[str]:
         tabs = ["overview"] + tabs
     if "ailog" not in tabs:
         tabs = tabs + ["ailog"]
+    # 新版本新增的默认 Tab（如 github）自动并入用户已保存的模板；
+    # 只并入 NEW_TABS，避免覆盖用户主动删除的旧 Tab（如 docs）
+    default = DEFAULT_TABS.get(ptype, DEFAULT_TABS["其他"])
+    missing = [k for k in default if k in NEW_TABS and k not in tabs]
+    if missing:
+        pos = tabs.index("overview") + 1 if "overview" in tabs else len(tabs)
+        for key in reversed(missing):
+            tabs.insert(pos, key)
     return tabs
 
 

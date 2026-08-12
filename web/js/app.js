@@ -174,6 +174,7 @@
     showTab("overview");
     renderOverview(proj);
     showDrawer();
+    renderChatPresets();
     loadVersionsData();
   }
 
@@ -233,6 +234,8 @@
     if (tab === "compliance") renderCompliance();
     if (tab === "docs") renderDocs();
     if (tab === "ailog") renderAILog();
+    if (tab === "github") renderGithub();
+    if (tab === "ai") renderChatPresets();
   }
 
   function renderOverview(proj) {
@@ -257,6 +260,7 @@
         "<button class='btn btn-sm' data-act='init'>预设初始化</button>" +
         "<button class='btn btn-sm' data-act='compliance'>合规检查</button>" +
         "<button class='btn btn-sm' data-act='icon'>设置图标</button>" +
+        "<button class='btn btn-sm' data-act='edit'>编辑信息</button>" +
         "<button class='btn btn-sm" + (proj.pinned ? " btn-pinned" : "") + "' data-act='pin'>" + (proj.pinned ? "取消置顶" : "置顶") + "</button>" +
         (proj.imported ? "" : "<button class='btn btn-sm btn-danger' data-act='remove'>移除管理</button>") +
       "</div>";
@@ -425,6 +429,8 @@
       showTab("compliance");
     } else if (act === "icon") {
       openIconModal();
+    } else if (act === "edit") {
+      openEditModal();
     } else if (act === "pin") {
       togglePin(id, null, true);
     } else if (act === "remove") {
@@ -457,6 +463,282 @@
       renderGrid();
       toast(res.pinned ? "已置顶" : "已取消置顶");
     } catch (err) { toast(err.message, "err"); }
+  }
+
+  /* ============ 项目信息编辑 ============ */
+  function openEditModal() {
+    if (!S.current) return;
+    const form = $("editForm");
+    if (!form) return;
+    form.elements.name.value = S.current.title || "";
+    form.elements.description.value = S.current.description || "";
+    const sel = $("editType");
+    sel.innerHTML = S.presets.map((p) => "<option value='" + esc(p.type) + "'>" + esc(p.label) + "</option>").join("");
+    sel.value = S.current.type;
+    openModal("edit");
+  }
+
+  async function saveEdit(ev) {
+    ev.preventDefault();
+    if (!S.current) return;
+    const form = ev.target;
+    const payload = {
+      name: form.elements.name.value.trim(),
+      type: form.elements.type.value,
+      description: form.elements.description.value.trim(),
+    };
+    if (!payload.name) { toast("项目名称不能为空", "err"); return; }
+    const oldId = S.current.id;
+    try {
+      const updated = await api("/api/projects/" + encodeURIComponent(oldId), { method: "PUT", body: payload });
+      toast("项目信息已更新");
+      closeModal("edit");
+      await refresh();
+      if (updated && updated.id) openDrawer(updated.id);
+    } catch (err) { toast(err.message, "err"); }
+  }
+
+  /* ============ GitHub 仓库管理 ============ */
+  function ghBadge(ok, text) {
+    return "<span class='ai-badge' style='" + (ok ? "" : "background:rgba(255,59,48,.12);color:#ff3b30;") + "'>" + esc(text) + "</span>";
+  }
+
+  function fixReadmeImages(md, owner, repo, branch) {
+    const base = "https://raw.githubusercontent.com/" + owner + "/" + repo + "/" + branch + "/";
+    return String(md || "").replace(/!\[([^\]]*)\]\(([^)]+)\)/g, function (m, alt, url) {
+      const u = String(url).trim();
+      if (/^(https?:|data:)/.test(u)) return m;
+      const safe = u.replace(/["'<>]/g, "").replace(/^\.\//, "");
+      return "![" + alt + "](" + base + safe + ")";
+    });
+  }
+
+  async function renderGithub() {
+    if (!S.current) return;
+    const seq = S.drawerSeq;
+    const pid = S.current.id;
+    const panel = $("panel-github");
+    if (!panel) return;
+    panel.innerHTML = "<div class='gh-box'><div class='gh-loading'>加载 GitHub 信息…</div></div>";
+    try {
+      const data = await api("/api/projects/" + encodeURIComponent(pid) + "/github");
+      if (seq !== S.drawerSeq || !S.current || S.current.id !== pid) return;
+      let html = "<div class='gh-box'>";
+      if (!data.auth.logged_in) {
+        html += "<div class='gh-login'><span class='gh-login-ico'>🐙</span><div>尚未登录 GitHub</div>" +
+          "<div style='font-size:12.5px;color:var(--text-3)'>登录后即可查看远程仓库、README、提交记录与发行版。</div>" +
+          "<button class='btn btn-sm btn-primary' id='btnGhGoSettings'>去设置登录</button></div>";
+      } else {
+        const u = data.auth.user || {};
+        html += "<div class='gh-card'><div class='gh-user'>" +
+          (u.avatar_url ? "<img src='" + esc(u.avatar_url) + "' alt=''>" : "<span class='logo-fallback'>🐙</span>") +
+          "<div><div class='gh-uname'>" + esc(u.login || "") + "</div>" +
+          "<div class='gh-usrc'>" + esc(data.auth.source === "token" ? "令牌登录" : "gh 命令行登录") + "</div></div>" +
+          "<span class='spacer'></span><button class='btn btn-sm' id='btnGhRefresh'>刷新</button></div>";
+        if (!data.remote.url) {
+          html += "<div class='gh-card'><h4>尚未关联远程仓库</h4>" +
+            "<div class='gh-remote-row'><span>当前项目没有配置 origin。可一键创建并推送，或手动填写远程地址。</span></div>" +
+            "<div class='action-row' style='margin-top:10px'>" +
+            "<button class='btn btn-sm btn-primary' id='btnGhCreate'>创建仓库并推送</button>" +
+            "<select id='ghCreateVis'><option value='private'>私有</option><option value='public'>公开</option></select></div>" +
+            "<div class='gh-set-remote'><input id='ghRemoteInput' placeholder='https://github.com/owner/repo.git' spellcheck='false'>" +
+            "<button class='btn btn-sm' id='btnGhSetRemote'>设置远程</button></div></div>";
+        } else {
+          const repo = data.repo || {};
+          html += "<div class='gh-card'><h4>" + esc(data.remote.owner + "/" + data.remote.repo) + "</h4>";
+          if (repo.error) {
+            html += "<div class='gh-err'>仓库信息读取失败：" + esc(repo.error) + "</div>";
+          } else if (repo.full_name) {
+            html += "<div class='gh-meta'>" +
+              "<div class='gm'>可见性</div><div class='gv'>" + (repo.private ? "私有" : "公开") + "</div>" +
+              "<div class='gm'>默认分支</div><div class='gv'>" + esc(repo.default_branch || "main") + "</div>" +
+              "<div class='gm'>语言</div><div class='gv'>" + esc(repo.language || "—") + "</div>" +
+              "<div class='gm'>最近推送</div><div class='gv'>" + esc((repo.pushed_at || "").slice(0, 10) || "—") + "</div>" +
+              "<div class='gm'>Stars / Forks</div><div class='gv'>" + repo.stargazers + " / " + repo.forks + "</div>" +
+              "<div class='gm'>Issues</div><div class='gv'>" + repo.issues + "</div></div>";
+          }
+          html += "<div class='action-row' style='margin-top:10px'>" +
+            "<button class='btn btn-sm btn-primary' id='btnGhOpen'>打开远程仓库</button>" +
+            "<button class='btn btn-sm' id='btnGhReleases'>发行版</button></div></div>";
+          html += "<div class='gh-card'><div class='action-row' style='margin:0 0 8px'><h4 style='margin:0'>README</h4><span class='spacer'></span>" +
+            "<button class='btn btn-sm' id='btnGhReadme'>加载 / 刷新</button></div>" +
+            "<div class='gh-readme' id='ghReadmeBox'><div class='gh-loading'>点击上方按钮加载远程 README</div></div></div>";
+          html += "<div class='gh-card'><h4>最近提交</h4><div id='ghCommitsBox'><div class='gh-loading'>加载中…</div></div></div>";
+          html += "<div class='gh-card'><h4>发行版 Releases</h4><div id='ghReleasesBox'><div class='gh-loading'>点击「发行版」加载</div></div></div>";
+        }
+      }
+      html += "</div>";
+      panel.innerHTML = html;
+      bindGithubActions(pid, data);
+      if (data.remote.url && data.auth.logged_in) loadGhCommits(pid);
+    } catch (err) {
+      panel.innerHTML = "<div class='gh-box'><div class='gh-err'>加载失败：" + esc(err.message) + "</div></div>";
+    }
+  }
+
+  function bindGithubActions(pid, data) {
+    const go = $("btnGhGoSettings");
+    if (go) go.addEventListener("click", openSettings);
+    const ref = $("btnGhRefresh");
+    if (ref) ref.addEventListener("click", renderGithub);
+    const openBtn = $("btnGhOpen");
+    if (openBtn && data.repo && data.repo.html_url) {
+      openBtn.addEventListener("click", () => api("/api/open-url", { method: "POST", body: { url: data.repo.html_url } }).catch((e) => toast(e.message, "err")));
+    }
+    const createBtn = $("btnGhCreate");
+    if (createBtn) createBtn.addEventListener("click", async () => {
+      if (!window.confirm("将在 GitHub 创建仓库并推送当前分支到 origin，继续？")) return;
+      const vis = ($("ghCreateVis") || {}).value || "private";
+      try {
+        const r = await api("/api/projects/" + encodeURIComponent(pid) + "/github/create", { method: "POST", body: { visibility: vis } });
+        toast(r.message || "仓库已创建");
+        renderGithub();
+      } catch (err) { toast(err.message, "err"); }
+    });
+    const setRemote = $("btnGhSetRemote");
+    if (setRemote) setRemote.addEventListener("click", async () => {
+      const url = ($("ghRemoteInput") || {}).value || "";
+      if (!url) { toast("请填写远程地址", "err"); return; }
+      try {
+        const r = await api("/api/projects/" + encodeURIComponent(pid) + "/github/set-remote", { method: "POST", body: { url: url } });
+        toast(r.message || "已设置");
+        renderGithub();
+      } catch (err) { toast(err.message, "err"); }
+    });
+    const readmeBtn = $("btnGhReadme");
+    if (readmeBtn) readmeBtn.addEventListener("click", () => loadGhReadme(pid));
+    const relBtn = $("btnGhReleases");
+    if (relBtn) relBtn.addEventListener("click", () => loadGhReleases(pid));
+  }
+
+  async function loadGhReadme(pid) {
+    const box = $("ghReadmeBox");
+    if (!box) return;
+    box.innerHTML = "<div class='gh-loading'>加载 README…</div>";
+    try {
+      const r = await api("/api/projects/" + encodeURIComponent(pid) + "/github/readme");
+      const branch = "main";
+      const text = fixReadmeImages(r.text, r.owner, r.repo, branch);
+      if (!text.trim()) { box.innerHTML = "<div class='gh-loading'>远程仓库没有 README</div>"; return; }
+      box.innerHTML = mdToHtml(text);
+    } catch (err) {
+      box.innerHTML = "<div class='gh-err'>" + esc(err.message) + "</div>";
+    }
+  }
+
+  async function loadGhCommits(pid) {
+    const box = $("ghCommitsBox");
+    if (!box) return;
+    try {
+      const r = await api("/api/projects/" + encodeURIComponent(pid) + "/github/commits");
+      box.innerHTML = r.commits.length
+        ? r.commits.map((c) => "<div class='gh-commit'><span class='ghc-msg'>" + esc(c.message) + "</span>" +
+            "<span class='ghc-sha'>" + esc(c.sha) + "</span>" +
+            "<span class='ghc-date'>" + esc((c.date || "").slice(0, 10)) + "</span></div>").join("")
+        : "<div class='gh-loading'>暂无提交记录</div>";
+    } catch (err) {
+      box.innerHTML = "<div class='gh-err'>" + esc(err.message) + "</div>";
+    }
+  }
+
+  async function loadGhReleases(pid) {
+    const box = $("ghReleasesBox");
+    if (!box) return;
+    box.innerHTML = "<div class='gh-loading'>加载发行版…</div>";
+    try {
+      const r = await api("/api/projects/" + encodeURIComponent(pid) + "/github/releases");
+      box.innerHTML = r.releases.length
+        ? r.releases.map((x) => "<div class='gh-rel'><span class='ghr-tag'>" + esc(x.tag) + "</span>" +
+            "<span class='ghr-date'>" + esc((x.published_at || "").slice(0, 10)) + "</span>" +
+            (x.prerelease ? ghBadge(false, "预发布") : "") +
+            "<span class='spacer'></span><button class='btn btn-sm' data-gh-url='" + esc(x.html_url) + "'>打开</button></div>").join("")
+        : "<div class='gh-loading'>暂无发行版</div>";
+      box.querySelectorAll("[data-gh-url]").forEach((b) => {
+        b.addEventListener("click", () => api("/api/open-url", { method: "POST", body: { url: b.dataset.ghUrl } }).catch((e) => toast(e.message, "err")));
+      });
+    } catch (err) {
+      box.innerHTML = "<div class='gh-err'>" + esc(err.message) + "</div>";
+    }
+  }
+
+  /* ============ GitHub 设置登录 ============ */
+  async function loadGithubAuth() {
+    const box = $("ghAuthStatus");
+    if (!box) return;
+    box.innerHTML = "检测中…";
+    try {
+      const a = await api("/api/github/auth");
+      const logout = $("btnGhLogout");
+      const loginBtn = $("btnGhLogin");
+      if (a.logged_in && a.user) {
+        box.innerHTML = "✅ 已登录：<strong>" + esc(a.user.login) + "</strong>（" + (a.source === "token" ? "令牌" : "gh 命令行") + "）";
+        if (logout) logout.hidden = false;
+        if (loginBtn) loginBtn.disabled = false;
+      } else {
+        box.textContent = "未登录。可粘贴个人访问令牌，或使用 gh 命令行登录。";
+        if (logout) logout.hidden = true;
+      }
+    } catch (err) {
+      box.textContent = "检测失败：" + err.message;
+    }
+  }
+
+  async function githubLogin() {
+    const input = $("ghTokenInput");
+    const token = (input.value || "").trim();
+    if (!token) { toast("请先粘贴令牌", "err"); return; }
+    try {
+      const r = await api("/api/github/auth", { method: "POST", body: { token: token } });
+      toast("已登录：" + r.user.login);
+      input.value = "";
+      await loadGithubAuth();
+    } catch (err) { toast(err.message, "err"); }
+  }
+
+  async function githubLogout() {
+    try {
+      await api("/api/github/auth", { method: "DELETE" });
+      toast("已退出登录");
+      await loadGithubAuth();
+    } catch (err) { toast(err.message, "err"); }
+  }
+
+  /* ============ AI 聊天：快捷指令 ============ */
+  const PRESETS_SOFT = [
+    "帮我初始化 Git 并提交当前代码",
+    "整理版本归档到 versions/ 目录",
+    "更新 CHANGELOG 并递增版本号",
+    "检查项目合规性并一键修复",
+    "构建 Debug 版本",
+    "审查代码并修复 Bug",
+    "补充单元测试",
+    "更新 README 文档",
+    "推送代码到 GitHub 远程仓库",
+    "发布新版本",
+  ];
+  const PRESETS_OTHER = [
+    "整理项目文件结构",
+    "按文件类型归类文档",
+    "生成项目文档索引",
+    "检查并补全项目信息",
+    "整理 versions/backups 备份",
+  ];
+  function renderChatPresets() {
+    const wrap = $("chatPresets");
+    if (!wrap) return;
+    const type = S.current ? S.current.type : "";
+    const soft = ["软件", "网站", "游戏", "脚本"].indexOf(type) >= 0;
+    const list = soft ? PRESETS_SOFT : PRESETS_OTHER;
+    wrap.innerHTML = "<span class='preset-head'>快捷指令</span>" +
+      list.map((t) => "<button class='preset-chip' data-prompt='" + esc(t) + "'>" + esc(t) + "</button>").join("");
+    wrap.querySelectorAll(".preset-chip").forEach((b) => {
+      b.addEventListener("click", () => {
+        const input = $("chatInput");
+        if (!input) return;
+        input.value = b.dataset.prompt;
+        input.focus();
+      });
+    });
   }
 
   const ICON_SYMBOLS = [
@@ -569,19 +851,30 @@
         box.innerHTML = "";
         logs.forEach((e) => {
           const cls = e.result === "done" ? "ok" : (e.result === "failed" ? "err" : "run");
+          const dot = e.result === "done" ? "clean" : e.result === "failed" ? "dirty" : e.result === "run" ? "run" : "no";
+          const git = e.git || {};
+          const gitParts = [];
+          if (git.head) gitParts.push("HEAD " + git.head);
+          if (git.branch) gitParts.push("分支 " + git.branch);
+          if (git.changed != null) gitParts.push("变更 " + git.changed + " 项");
+          if (git.added) gitParts.push("新增 " + git.added);
+          if (git.commits != null) gitParts.push("提交 " + git.commits);
           box.innerHTML +=
-            "<div class='ai-entry'><div class='ai-head'><span class='git-dot " + (e.result === "done" ? "clean" : e.result === "failed" ? "dirty" : e.result === "run" ? "run" : "no") + "'></span>" +
-            "<span class='ai-agent'>" + esc(e.agent || "?") + "</span>" +
+            "<div class='ai-entry'><div class='ai-head'><span class='git-dot " + dot + "'></span>" +
+            "<span class='ai-agent'>" + esc(agentLabel(e.agent) || e.agent || "?") + "</span>" +
             "<span class='ai-ts'>" + esc((e.ts || "").replace("T", " ").slice(0, 19)) + "</span>" +
-            "<span class='spacer'></span><span class='ai-result " + cls + "'>" + esc(e.result) + "</span></div>" +
+            "<span class='spacer'></span>" +
+            (e.source === "inapp" ? "<span class='ai-src'>应用内</span>" : "") +
+            "<span class='ai-result " + cls + "'>" + esc(e.result) + "</span></div>" +
             "<div class='ai-action'>" + esc(e.action || "") + "</div>" +
             (e.summary ? "<div class='ai-summary'>" + esc(e.summary) + "</div>" : "") +
-            ((e.details || e.backup || Object.keys(e.git || {}).length) ?
-              "<details class='ai-detail'><summary>详情</summary><div>" +
-              (e.details ? "<div>" + esc(e.details) + "</div>" : "") +
-              (e.backup ? "<div class='mono'>备份：" + esc(e.backup) + "</div>" : "") +
-              (e.git && e.git.head ? "<div class='mono'>Git：" + esc(e.git.head) + "，变更 " + esc(e.git.changed || 0) + " 项</div>" : "") +
-              "</div></details>" : "");
+            "<div class='ai-more'>" +
+            (e.source ? "<span class='ai-src'>来源：" + esc(e.source === "inapp" ? "应用内" : "外部 Agent") + "</span>" : "") +
+            (e.backup ? "<span class='ai-src'>备份：" + esc(e.backup) + "</span>" : "") +
+            (gitParts.length ? "<span class='ai-src'>Git：" + esc(gitParts.join(" · ")) + "</span>" : "") +
+            "</div>" +
+            ((e.details) ?
+              "<details class='ai-detail'><summary>详情</summary><div>" + esc(e.details) + "</div></details>" : "");
         });
       }
       const ref = $("btnAILogRefresh");
@@ -633,10 +926,14 @@
       } else {
         html += data.activity.map((e) =>
           "<div class='ai-entry'><span class='git-dot " + (e.result === "done" ? "clean" : e.result === "failed" ? "dirty" : e.result === "run" ? "run" : "no") + "'></span>" +
+          "<div class='console-act'><button class='ai-badge' data-pid='" + esc(e.project || "") + "' title='打开项目'>" + esc(e.project_title || e.project || "") + "</button>" +
           "<span class='ai-ts'>" + esc((e.ts || "").replace("T", " ").slice(0, 16)) + "</span>" +
-          "<span class='ai-agent'>" + esc(e.project || "") + "</span>" +
-          "<span class='ai-action' title='" + esc(e.action || "") + "'>" + esc(e.action || "") + "</span>" +
-          "<span class='spacer'></span><span class='ai-result " + (e.result === "done" ? "ok" : e.result === "failed" ? "err" : "run") + "'>" + esc(e.result) + "</span></div>"
+          "<span class='ai-agent'>" + esc(e.agent || "") + "</span>" +
+          "<span class='ai-result " + (e.result === "done" ? "ok" : e.result === "failed" ? "err" : "run") + "'>" + esc(e.result) + "</span></div>" +
+          "<div class='ai-action' title='" + esc(e.action || "") + "'>" + esc(e.action || "") + "</div>" +
+          (e.summary ? "<div class='ai-summary'>" + esc(e.summary) + "</div>" : "") +
+          (e.details ? "<details class='ai-detail'><summary>详情</summary><div>" + esc(e.details) + "</div></details>" : "") +
+          "</div>"
         ).join("");
       }
       html += "</div>";
@@ -666,6 +963,9 @@
       if (ref) ref.addEventListener("click", renderConsole);
       box.querySelectorAll(".proj-row").forEach((row) => {
         row.addEventListener("click", () => openDrawer(row.dataset.pid));
+      });
+      box.querySelectorAll(".ai-badge[data-pid]").forEach((b) => {
+        b.addEventListener("click", () => openDrawer(b.dataset.pid));
       });
       const batch = $("btnBatchRun");
       if (batch) batch.addEventListener("click", runBatch);
@@ -1087,6 +1387,12 @@ async function runBuild(script) {
       const h = line.match(/^(#{1,6})\s+(.*)$/);
       if (h) { html += "<h" + h[1].length + ">" + inlineMd(h[2]) + "</h" + h[1].length + ">"; return; }
       if (/^(-{3,}|\*{3,}|_{3,})$/.test(line.trim())) { html += "<hr>"; return; }
+      const img = line.match(/^\s*!\[([^\]]*)\]\(([^)]+)\)\s*$/);
+      if (img) {
+        const u = String(img[2]).replace(/["'<>]/g, "");
+        html += "<img class='md-img' src='" + u + "' alt='" + esc(img[1]) + "' loading='lazy'>";
+        return;
+      }
       const li = line.match(/^\s*([-*+])\s+(.*)$/);
       if (li) { html += "<li>" + inlineMd(li[2]) + "</li>"; return; }
       const ol = line.match(/^\s*\d+[.)]\s+(.*)$/);
@@ -1286,6 +1592,7 @@ async function runBuild(script) {
     if (cur) cur.textContent = S.appVersion || "";
     renderTypeTabsEditor();
     openModal("settings");
+    loadGithubAuth();
   }
 
   async function saveSettings(ev) {
@@ -1563,6 +1870,16 @@ async function runBuild(script) {
     $("newForm").addEventListener("submit", createProject);
     $("importForm").addEventListener("submit", importProject);
     $("settingsForm").addEventListener("submit", saveSettings);
+    const btnGhRefresh = $("btnGhRefresh");
+    if (btnGhRefresh) btnGhRefresh.addEventListener("click", loadGithubAuth);
+    const btnGhLogin = $("btnGhLogin");
+    if (btnGhLogin) btnGhLogin.addEventListener("click", githubLogin);
+    const btnGhLogout = $("btnGhLogout");
+    if (btnGhLogout) btnGhLogout.addEventListener("click", githubLogout);
+    const ghToken = $("ghTokenInput");
+    if (ghToken) ghToken.addEventListener("keydown", (e) => { if (e.key === "Enter") githubLogin(); });
+    const editForm = $("editForm");
+    if (editForm) editForm.addEventListener("submit", saveEdit);
     $("typesForm").addEventListener("submit", addType);
     $("releaseForm").addEventListener("submit", startRelease);
     document.querySelectorAll("[data-bump]").forEach((btn) => {

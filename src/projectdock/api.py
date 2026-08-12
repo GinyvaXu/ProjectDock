@@ -17,13 +17,14 @@ from fastapi.staticfiles import StaticFiles
 
 from . import agent as agent_mod
 from . import iconmaker
-from . import ailog, backup, builder, compliance, console, contract, github, presets, release, scanner, update, versioning
+from . import ailog, backup, builder, compliance, console, contract, ghrepo, github, presets, release, scanner, update, versioning
 from .agent import AGENTS
 from .config import APP_NAME, APP_VERSION
 from .db import delete_custom_type, delete_project, get_custom_type, get_project, list_custom_types, list_projects, set_pinned, upsert_custom_type, upsert_project
 from .models import (AGENT_NAMES, PROJECT_TYPES, THEMES, AILogCreate, AgentBatch, AgentRun,
-                     BackupRestore, BuildRun, ComplianceFix, CustomTypeCreate, IconPayload, OpenPath,
-                     ProjectCreate, ProjectImport, ProjectInit, ReleaseRun, SettingsUpdate, UpdateInstall)
+                     BackupRestore, BuildRun, ComplianceFix, CustomTypeCreate, GithubAuthPayload,
+                     GithubCreatePayload, GithubSetRemotePayload, IconPayload, OpenPath, OpenUrl,
+                     ProjectCreate, ProjectImport, ProjectInit, ProjectUpdate, ReleaseRun, SettingsUpdate, UpdateInstall)
 from .state import AppState
 
 def _locate_web_dir() -> Path:
@@ -491,6 +492,165 @@ def create_app(state: AppState) -> FastAPI:
             raise HTTPException(status_code=400, detail="当前平台暂不支持打开文件夹")
         os.startfile(proj["path"])  # type: ignore[attr-defined]
         return {"ok": True}
+
+    @api.put("/projects/{pid}")
+    def update_project(pid: str, payload: ProjectUpdate) -> dict:
+        """编辑项目信息：name 重命名标题、type 更新类型、description 存库。"""
+        proj = _resolve_project(pid)
+        old_path = Path(proj["path"])
+        old_row = get_project(state.conn, pid) or {}
+        ptype = payload.type or proj.get("type", "其他")
+        parsed = scanner.parse_project_dir(pid)
+        current_title = parsed[2] if parsed else proj.get("name", pid)
+        title = (payload.name or "").strip() or current_title
+        description = payload.description if payload.description is not None else proj.get("description", "")
+        if parsed is not None:
+            new_name = f"项目{parsed[0]}-{ptype}-{scanner.sanitize_title(title)}"
+        else:
+            new_name = scanner.sanitize_title(title) if (payload.name or "").strip() else pid
+        new_path = old_path
+        if new_name != pid:
+            target = old_path.parent / new_name
+            if target.exists():
+                raise HTTPException(status_code=400, detail=f"目标文件夹已存在：{new_name}")
+            try:
+                os.rename(old_path, target)
+            except OSError as exc:
+                raise HTTPException(status_code=400, detail=f"重命名失败：{exc}")
+            new_path = target
+            delete_project(state.conn, pid)
+        upsert_project(state.conn, new_path.name, new_path.name, ptype, str(new_path),
+                       description, imported=bool(proj.get("imported", False)),
+                       pinned=bool(old_row.get("pinned", False)))
+        parsed = scanner.parse_project_dir(new_path.name)
+        return {
+            "id": new_path.name,
+            "name": new_path.name,
+            "type": ptype,
+            "title": parsed[2] if parsed else new_path.name,
+            "path": str(new_path),
+            "description": description,
+            "imported": bool(proj.get("imported", False)),
+            "pinned": bool(old_row.get("pinned", False)),
+        }
+
+    @api.get("/github/auth")
+    def github_auth_status() -> dict:
+        token = ghrepo.resolve_token(state.settings)
+        user = ghrepo.gh_user(token)
+        source = "token" if state.settings.github_token else ("gh" if user else "none")
+        return {"logged_in": bool(user), "source": source, "user": user}
+
+    @api.post("/github/auth")
+    def github_auth_login(payload: GithubAuthPayload) -> dict:
+        token = (payload.token or "").strip()
+        user = ghrepo.gh_user(token)
+        if not user:
+            raise HTTPException(status_code=400, detail="令牌无效或已过期，请检查后重试")
+        state.settings.update(github_token=token)
+        return {"ok": True, "user": user}
+
+    @api.delete("/github/auth")
+    def github_auth_logout() -> dict:
+        state.settings.update(github_token="")
+        return {"ok": True}
+
+    @api.post("/open-url")
+    def open_url(payload: OpenUrl) -> dict:
+        url = (payload.url or "").strip()
+        if not url.startswith(("http://", "https://")):
+            raise HTTPException(status_code=400, detail="仅支持 http/https 链接")
+        try:
+            if os.name == "nt":
+                os.startfile(url)  # type: ignore[attr-defined]
+            else:
+                import webbrowser
+                webbrowser.open(url)
+        except OSError as exc:
+            raise HTTPException(status_code=400, detail=f"打开失败：{exc}")
+        return {"ok": True, "url": url}
+
+    @api.get("/projects/{pid}/github")
+    def project_github(pid: str) -> dict:
+        proj = _resolve_project(pid)
+        token = ghrepo.resolve_token(state.settings)
+        user = ghrepo.gh_user(token)
+        remote = ghrepo.remote_of(Path(proj["path"]))
+        slug = ghrepo.parse_remote_url(remote) if remote else None
+        repo = None
+        if slug and user:
+            try:
+                repo = ghrepo.repo_info(token, slug[0], slug[1])
+            except ghrepo.GhError as exc:
+                repo = {"error": str(exc)}
+        source = "token" if state.settings.github_token else ("gh" if user else "none")
+        return {
+            "auth": {"logged_in": bool(user), "source": source, "user": user},
+            "remote": {"url": remote or "", "owner": slug[0] if slug else "", "repo": slug[1] if slug else ""},
+            "repo": repo,
+        }
+
+    @api.get("/projects/{pid}/github/readme")
+    def project_github_readme(pid: str) -> dict:
+        proj = _resolve_project(pid)
+        token = ghrepo.resolve_token(state.settings)
+        slug = ghrepo.repo_slug(Path(proj["path"]))
+        if not slug:
+            raise HTTPException(status_code=400, detail="项目未配置 GitHub 远程仓库")
+        if not token:
+            raise HTTPException(status_code=400, detail="未登录 GitHub，请先在设置中登录")
+        try:
+            text = ghrepo.repo_readme(token, slug[0], slug[1])
+        except ghrepo.GhError as exc:
+            raise HTTPException(status_code=404, detail=str(exc))
+        return {"text": text, "owner": slug[0], "repo": slug[1]}
+
+    @api.get("/projects/{pid}/github/commits")
+    def project_github_commits(pid: str, limit: int = 10) -> dict:
+        proj = _resolve_project(pid)
+        token = ghrepo.resolve_token(state.settings)
+        slug = ghrepo.repo_slug(Path(proj["path"]))
+        if not slug or not token:
+            return {"commits": []}
+        try:
+            commits = ghrepo.repo_commits(token, slug[0], slug[1], limit=max(1, min(limit, 50)))
+        except ghrepo.GhError:
+            commits = []
+        return {"commits": commits}
+
+    @api.get("/projects/{pid}/github/releases")
+    def project_github_releases(pid: str, limit: int = 8) -> dict:
+        proj = _resolve_project(pid)
+        token = ghrepo.resolve_token(state.settings)
+        slug = ghrepo.repo_slug(Path(proj["path"]))
+        if not slug or not token:
+            return {"releases": []}
+        try:
+            releases = ghrepo.repo_releases(token, slug[0], slug[1], limit=max(1, min(limit, 30)))
+        except ghrepo.GhError:
+            releases = []
+        return {"releases": releases}
+
+    @api.post("/projects/{pid}/github/create")
+    def project_github_create(pid: str, payload: GithubCreatePayload) -> dict:
+        proj = _resolve_project(pid)
+        token = ghrepo.resolve_token(state.settings)
+        parsed = scanner.parse_project_dir(pid)
+        name = github.repo_name_for(parsed[2] if parsed else proj["name"])
+        visibility = payload.visibility if payload.visibility in ("private", "public") else "private"
+        result = ghrepo.create_repo(Path(proj["path"]), name, visibility, token, proj.get("description", ""))
+        if not result.get("ok"):
+            raise HTTPException(status_code=400, detail=result.get("message", "创建失败"))
+        return result
+
+    @api.post("/projects/{pid}/github/set-remote")
+    def project_github_set_remote(pid: str, payload: GithubSetRemotePayload) -> dict:
+        proj = _resolve_project(pid)
+        result = ghrepo.set_remote(Path(proj["path"]), (payload.url or "").strip())
+        if not result.get("ok"):
+            raise HTTPException(status_code=400, detail=result.get("message", "设置失败"))
+        return result
+
 
     @api.get("/jobs")
     def list_jobs(limit: int = 30) -> list[dict]:

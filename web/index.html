@@ -67,16 +67,20 @@
       <section class="panel" id="panel-versions"></section>
       <section class="panel" id="panel-compliance"></section>
       <section class="panel" id="panel-docs"></section>
+      <section class="panel" id="panel-github"></section>
       <section class="panel" id="panel-ailog"></section>
       <section class="panel" id="panel-ai">
         <div class="chat">
           <div class="chat-msgs" id="chatMsgs">
             <div class="chat-hint">用自然语言向 AI 项目助手下达要求。任务将在当前项目目录中执行，输出会实时回显。</div>
           </div>
-          <div class="chat-input">
-            <select id="agentSelect" title="AI 后端"></select>
-            <input id="chatInput" placeholder="例如：帮我初始化 git 并提交当前代码…" autocomplete="off">
-            <button class="btn btn-primary" id="chatSend">发送</button>
+          <div class="chat-dock">
+            <div class="chat-input">
+              <select id="agentSelect" title="AI 后端"></select>
+              <input id="chatInput" placeholder="例如：帮我初始化 git 并提交当前代码…" autocomplete="off">
+              <button class="btn btn-primary" id="chatSend">发送</button>
+            </div>
+            <div class="chat-presets" id="chatPresets"></div>
           </div>
         </div>
       </section>
@@ -120,6 +124,22 @@
     </div>
   </div>
 
+  <div class="modal-backdrop" id="editBackdrop" hidden>
+    <div class="modal">
+      <header class="modal-head"><h3>编辑项目信息</h3><button class="icon-btn" data-close="edit">✕</button></header>
+      <form id="editForm">
+        <label class="field"><span>项目名称</span><input name="name" maxlength="60" placeholder="项目标题（变更会重命名文件夹）"></label>
+        <label class="field"><span>项目类型</span><select name="type" id="editType"></select></label>
+        <label class="field"><span>描述</span><textarea name="description" rows="3"></textarea></label>
+        <p class="edit-hint">名称 / 类型变更会同步重命名项目文件夹（保留编号前缀）；描述与图标信息保存在 ProjectDock 中。</p>
+        <footer class="modal-foot">
+          <button type="button" class="btn" data-close="edit">取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </footer>
+      </form>
+    </div>
+  </div>
+
   <div class="modal-backdrop" id="importBackdrop" hidden>
     <div class="modal">
       <header class="modal-head"><h3>导入已有文件夹</h3><button class="icon-btn" data-close="import">✕</button></header>
@@ -144,6 +164,20 @@
         <label class="field"><span>主题</span><select name="theme"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></label>
         <label class="check"><input type="checkbox" name="github_auto" checked><span>新建项目自动创建 GitHub 仓库并推送</span></label>
         <label class="field"><span>仓库可见性</span><select name="github_visibility"><option value="private">私有</option><option value="public">公开</option></select></label>
+        <label class="field"><span>GitHub 账号（项目远程仓库管理）</span>
+          <div class="gh-auth-box">
+            <div class="gh-auth-status" id="ghAuthStatus">检测中…</div>
+            <div class="gh-auth-actions">
+              <button type="button" class="btn btn-sm" id="btnGhRefresh">刷新检测</button>
+              <button type="button" class="btn btn-sm btn-danger" id="btnGhLogout" hidden>退出登录</button>
+            </div>
+            <div class="gh-token-row">
+              <input id="ghTokenInput" placeholder="粘贴 GitHub 个人访问令牌（PAT，repo 权限）" autocomplete="off" spellcheck="false">
+              <button type="button" class="btn btn-sm btn-primary" id="btnGhLogin">登录</button>
+            </div>
+            <p class="gh-hint">优先使用 gh 命令行登录态（gh auth login）；无 gh 时在此粘贴令牌。创建令牌：<a href="https://github.com/settings/tokens" target="_blank" rel="noopener">github.com/settings/tokens</a></p>
+          </div>
+        </label>
         <label class="check"><input type="checkbox" name="backup" checked><span>AI 任务 / 发布前自动备份（zip 快照到 versions/backups/）</span></label>
         <label class="field"><span>确认策略（勾选的操作在执行前需要用户确认；AI agent 必须先征得同意）</span>
           <div class="policy-editor">
