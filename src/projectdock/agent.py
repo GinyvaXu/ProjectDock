@@ -74,7 +74,16 @@ async def run_agent_task(state, project_path: Path, agent: str, prompt: str, emi
             emit(f"[备份] 跳过（{exc}）")
 
     cmd = resolve_command(build_command(agent, prompt))
-    code = await stream_command(emit, cmd, str(project_path))
+    try:
+        code = await stream_command(emit, cmd, str(project_path))
+    except Exception as exc:  # noqa: BLE001
+        emit("")
+        emit("———— 任务报告 ————")
+        emit(f"状态：失败（无法启动命令：{exc}）")
+        hint = AGENTS.get(agent, {}).get("hint")
+        if hint:
+            emit(f"提示：{hint}")
+        raise
 
     emit("")
     emit("———— 任务报告 ————")

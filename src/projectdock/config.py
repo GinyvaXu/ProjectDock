@@ -66,7 +66,7 @@ class Settings:
 
     @property
     def agent(self) -> str:
-        return self._data.get("agent", "claude")
+        return self._data.get("agent", "pi")
 
     @property
     def theme(self) -> str:

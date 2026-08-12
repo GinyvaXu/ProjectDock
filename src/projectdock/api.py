@@ -44,7 +44,9 @@ def create_app(state: AppState) -> FastAPI:
             return row
         p = state.settings.root / pid
         if p.is_dir():
-            return {"id": pid, "name": pid, "type": "其他", "path": str(p), "description": ""}
+            parsed = scanner.parse_project_dir(pid)
+            return {"id": pid, "name": pid, "type": parsed[1] if parsed else "其他",
+                    "path": str(p), "description": ""}
         raise HTTPException(status_code=404, detail="项目不存在")
 
     def _type_spec(ptype: str) -> dict | None:
@@ -147,9 +149,11 @@ def create_app(state: AppState) -> FastAPI:
         projects = scanner.scan_root(root, db_rows)
         known = {p["id"] for p in projects}
         for proj in projects:
-            if proj["id"] not in db_rows or db_rows[proj["id"]].get("excluded"):
+            row = db_rows.get(proj["id"])
+            if row is None or row.get("excluded") or row["path"] != proj["path"]:
                 upsert_project(state.conn, proj["id"], proj["name"], proj["type"],
-                               proj["path"], proj["description"], imported=False)
+                               proj["path"], proj["description"], imported=False,
+                               excluded=bool(row.get("excluded")) if row else False)
         for row in list_projects(state.conn):
             if row["excluded"]:
                 continue
@@ -186,9 +190,14 @@ def create_app(state: AppState) -> FastAPI:
 
         github_result = None
         want_github = payload.github if payload.github is not None else state.settings.github_auto
-        if want_github and preset_result and preset_result.get("git") and not github.has_remote(project_path):
-            github_result = github.create_repo(project_path, github.repo_name_for(payload.name),
-                                               state.settings.github_visibility)
+        if want_github and not github.has_remote(project_path):
+            if not (project_path / ".git").is_dir():
+                presets.ensure_git_commit(project_path)
+            if (project_path / ".git").is_dir():
+                github_result = github.create_repo(project_path, github.repo_name_for(payload.name),
+                                                   state.settings.github_visibility)
+            else:
+                github_result = {"ok": False, "message": "git 初始化失败，未创建 GitHub 仓库"}
 
         return {
             "id": folder_name,

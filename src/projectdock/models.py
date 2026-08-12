@@ -31,7 +31,7 @@ class ProjectInit(BaseModel):
 class AgentRun(BaseModel):
     project_id: str
     prompt: str = Field(min_length=1)
-    agent: str = "claude"
+    agent: str | None = None  # None 时回落全局设置（默认 pi）
 
 
 class BuildRun(BaseModel):

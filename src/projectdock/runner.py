@@ -63,11 +63,22 @@ class JobRegistry:
     输出写入线程安全的 queue.Queue，SSE 端通过 asyncio.to_thread 读取。
     """
 
+    MAX_JOBS = 100
+
     def __init__(self):
         self._jobs: dict[str, Job] = {}
         self._loop = asyncio.new_event_loop()
         self._thread = threading.Thread(target=self._run_loop, name="projectdock-jobs", daemon=True)
         self._thread.start()
+
+    def _prune(self) -> None:
+        """清理已完成任务，防止长时间运行导致内存累积（保留最近的 MAX_JOBS 个）。"""
+        excess = len(self._jobs) - self.MAX_JOBS
+        if excess <= 0:
+            return
+        done = [jid for jid, j in self._jobs.items() if j.status != "running"]
+        for jid in done[:excess]:
+            self._jobs.pop(jid, None)
 
     def _run_loop(self) -> None:
         asyncio.set_event_loop(self._loop)
@@ -77,12 +88,14 @@ class JobRegistry:
         job = Job(id=uuid.uuid4().hex[:12], label=label)
         self._jobs[job.id] = job
         asyncio.run_coroutine_threadsafe(self._run_command(job, cmd, cwd), self._loop)
+        self._prune()
         return job
 
     def start_task(self, label: str, coro_factory: Callable[[Callable[[str], None]], Awaitable[None]]) -> Job:
         job = Job(id=uuid.uuid4().hex[:12], label=label)
         self._jobs[job.id] = job
         asyncio.run_coroutine_threadsafe(self._run_task(job, coro_factory), self._loop)
+        self._prune()
         return job
 
     async def _run_command(self, job: Job, cmd: list[str], cwd: str | None) -> None:

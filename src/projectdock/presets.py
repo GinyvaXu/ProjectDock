@@ -249,6 +249,13 @@ def _apply_spec(project_path: Path, spec: dict, ptype: str, title: str, descript
     return {"type": ptype, "files": created, "git": git_ok, "message": message}
 
 
+def ensure_git_commit(project_path: Path, identity: dict | None = None) -> bool:
+    """确保目录已 git init 且有至少一个提交；已存在仓库则直接返回 True。"""
+    if (project_path / ".git").is_dir():
+        return True
+    return _git_init_commit(project_path, identity)
+
+
 def _git_init_commit(project_path: Path, identity: dict | None = None) -> bool:
     try:
         env = os.environ.copy()

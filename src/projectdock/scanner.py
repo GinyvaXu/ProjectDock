@@ -6,6 +6,15 @@ from pathlib import Path
 from .versioning import read_version
 
 INDEX_RE = re.compile(r"^项目(\d+)-")
+INVALID_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+
+
+def sanitize_title(title: str) -> str:
+    """清理项目名：替换 Windows 非法字符、防路径穿越（..）、去首尾空白/点。"""
+    title = INVALID_CHARS.sub("-", title or "")
+    title = re.sub(r"\.\.+", "-", title)
+    title = re.sub(r"\s+", " ", title).strip(" .-")
+    return title or "未命名项目"
 
 
 def parse_project_dir(name: str) -> tuple[int, str, str] | None:
@@ -37,7 +46,7 @@ def find_next_index(root: Path) -> int:
 
 def make_folder_name(root: Path, ptype: str, title: str) -> str:
     """生成 项目NN-类型-名称 文件夹名（沿用资料库不补零的命名习惯）。"""
-    return f"项目{find_next_index(root)}-{ptype}-{title}"
+    return f"项目{find_next_index(root)}-{ptype}-{sanitize_title(title)}"
 
 
 def scan_root(root: Path, db_rows: dict[str, dict] | None = None) -> list[dict]:

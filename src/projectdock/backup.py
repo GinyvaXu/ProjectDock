@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -16,14 +17,19 @@ def make_backup(project_path: Path) -> Path:
     target = backups_dir / f"pd_backup_{ts}.zip"
     count = 0
     with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as zf:
-        for file in sorted(project_path.rglob("*")):
-            if file.is_dir() or file.suffix in (".pyc",):
+        for dirpath, dirnames, filenames in os.walk(project_path):
+            rel_dir = Path(dirpath).relative_to(project_path)
+            # 剪枝：跳过 .git/versions/.venv 等大目录，不深入遍历
+            if rel_dir.parts and rel_dir.parts[0] in SKIP_DIRS:
+                dirnames[:] = []
                 continue
-            rel = file.relative_to(project_path)
-            if rel.parts and rel.parts[0] in SKIP_DIRS:
-                continue
-            zf.write(file, arcname=str(rel))
-            count += 1
+            dirnames[:] = [d for d in dirnames if (rel_dir / d).parts[0] not in SKIP_DIRS]
+            for name in filenames:
+                file = Path(dirpath) / name
+                if file.suffix == ".pyc":
+                    continue
+                zf.write(file, arcname=str(file.relative_to(project_path)))
+                count += 1
     if count == 0:
         target.unlink(missing_ok=True)
         raise ValueError("项目为空，跳过备份")

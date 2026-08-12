@@ -370,8 +370,9 @@
       status.className = "build-status err";
       return;
     }
+    const scrollLog = () => { box.scrollTop = box.scrollHeight; };
     streamEvents("/api/jobs/" + jobId + "/stream", (data) => {
-      if (data.type === "line") log.textContent += data.text + "\n";
+      if (data.type === "line") { log.textContent += data.text + "\n"; scrollLog(); }
       if (data.type === "end") {
         status.textContent = data.status === "done" ? "构建完成 ✓" : "构建失败：" + (data.error || "");
         status.className = "build-status " + (data.status === "done" ? "ok" : "err");
@@ -430,7 +431,7 @@
       return;
     }
     streamEvents("/api/jobs/" + jobId + "/stream", (data) => {
-      if (data.type === "line") log.textContent += data.text + "\n";
+      if (data.type === "line") { log.textContent += data.text + "\n"; box.scrollTop = box.scrollHeight; }
       if (data.type === "end") {
         status.textContent = data.status === "done" ? "发布完成 ✓" : "发布失败：" + (data.error || "");
         status.className = "build-status " + (data.status === "done" ? "ok" : "err");

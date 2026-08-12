@@ -16,3 +16,8 @@
 - 抽屉面板切换加入淡入动画；聊天任务结束即复位输入框
 - iOS 风格 UI：毛玻璃侧边栏、弹簧动画、深色/浅色/跟随系统主题
 - 修复 PyInstaller windowed 版启动崩溃：stdout/stderr 重定向 + 崩溃日志（%LOCALAPPDATA%/ProjectDock/crash.log）；构建加入 --paths src
+- 健壮性修复：文件夹重命名/移动不再触发 UNIQUE(path) 冲突；更换根目录自动刷新注册路径；移除管理的项目不会重新出现在列表
+- 安全修复：项目名清理 Windows 非法字符与 `..` 路径穿越
+- 勾选 GitHub 但关闭预设时自动 git init + 首次提交后再建仓
+- AI 命令无法启动时输出失败任务报告；任务注册表自动清理防内存累积
+- 备份改用 os.walk 剪枝（跳过 .venv/node_modules/versions 等大目录）；未注册项目类型推断

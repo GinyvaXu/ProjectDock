@@ -52,13 +52,15 @@ def _migrate(conn: sqlite3.Connection) -> None:
 def upsert_project(conn, project_id: str, name: str, ptype: str, path: str,
                    description: str = "", imported: bool = False, excluded: bool = False) -> None:
     ts = now()
+    # 同路径被其它 id 占用（文件夹重命名/移动）：先清除旧注册，避免 UNIQUE(path) 冲突
+    conn.execute("DELETE FROM projects WHERE path = ? AND id <> ?", (str(path), project_id))
     conn.execute(
         """INSERT INTO projects (id, name, type, path, description, created_at, updated_at, imported, excluded)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT(path) DO UPDATE SET
-             id = excluded.id,
+           ON CONFLICT(id) DO UPDATE SET
              name = excluded.name,
              type = excluded.type,
+             path = excluded.path,
              description = excluded.description,
              updated_at = excluded.updated_at,
              imported = excluded.imported,
