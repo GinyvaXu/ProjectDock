@@ -49,7 +49,7 @@
 1. 自动更新链路：GitHub Releases 检查（gh/API）→ Setup 下载 → 静默安装（Inno Setup）
 2. 设置面板「软件更新」UI + 启动自动检查提示；更新仓库可配置
 3. build_setup.py 构建 Setup 安装包（%LOCALAPPDATA%/Programs/ProjectDock，无需管理员）
-4. 测试：123 个用例通过，覆盖率 85.32%（门槛 80%）
+4. 测试：126 个用例通过，覆盖率 85.30%（门槛 80%）
 
 ## 待办（后续）
 - GitHub Releases 拉取（下载/展示历史版本）、模板导入/导出、多根目录、托盘、全局快捷键

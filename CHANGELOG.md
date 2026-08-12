@@ -11,7 +11,10 @@
 - Setup 安装包构建：build_setup.py（PyInstaller windowed + Inno Setup 6 编译），
   安装到 %LOCALAPPDATA%/Programs/ProjectDock（无需管理员），CloseApplications=force 自动关闭旧进程，
   创建桌面/开始菜单快捷方式，安装后可选立即运行
-- 测试 123 个通过，覆盖率 85.32%（门槛 80%）；GitHub Release 上传 Setup 安装包即激活更新链路
+- 测试 126 个通过，覆盖率 85.30%（门槛 80%）；GitHub Release 上传 Setup 安装包即激活更新链路
+### Fixed（更新链路修复）
+- gh release view 误用字面 latest 参数导致 release not found，改为不带 tag 默认取最新 Release；
+  GitHub API 兜底增加 gh 令牌鉴权，私有仓库也能正常检查更新
 
 ## [0.3.0] - 2026-08-12
 ### Added（v0.2 阶段 3：CLI 工具链 + 确认策略）
