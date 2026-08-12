@@ -143,6 +143,43 @@ def find_documents(project_path: Path, max_depth: int = 2) -> list[dict]:
     return docs
 
 
+DOC_GROUP_EXT = {".docx": "Word 文档", ".doc": "Word 文档", ".pdf": "PDF", ".pptx": "PPT",
+                  ".ppt": "PPT", ".xlsx": "表格", ".xls": "表格", ".md": "Markdown", ".txt": "文本"}
+
+
+def scan_documents(project_path: Path, max_depth: int = 3) -> list[dict]:
+    """扫描项目内全部文档（按文件类型分组排序），供「文稿版本」等类型模板使用。
+
+    返回 [{name, path, ext, group, size, mtime}]，按 类型组 → 修改时间倒序 排序。
+    """
+    if not project_path.is_dir():
+        return []
+    docs: list[dict] = []
+    for dirpath, dirnames, filenames in os.walk(project_path):
+        rel = Path(dirpath).relative_to(project_path)
+        if rel.parts and rel.parts[0] in DOC_SKIP_TOP:
+            dirnames[:] = []
+            continue
+        if len(rel.parts) > max_depth:
+            dirnames[:] = []
+            continue
+        for name in filenames:
+            ext = Path(name).suffix.lower()
+            if ext not in DOC_GROUP_EXT:
+                continue
+            full = Path(dirpath) / name
+            try:
+                size = full.stat().st_size
+                mtime = full.stat().st_mtime
+            except OSError:
+                size, mtime = None, 0.0
+            docs.append({"name": name, "path": str(full), "ext": ext.lstrip("."),
+                         "group": DOC_GROUP_EXT[ext], "size": size, "mtime": mtime})
+    order = {g: i for i, g in enumerate(DOC_GROUP_EXT.values())}
+    docs.sort(key=lambda d: (order.get(d["group"], 99), -(d["mtime"] or 0)))
+    return docs
+
+
 def import_folder(conn, folder_path: Path, ptype: str, description: str) -> dict:
     """把已有文件夹纳入管理（注册到数据库）。"""
     folder = Path(folder_path).expanduser().resolve()

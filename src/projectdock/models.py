@@ -34,6 +34,12 @@ class AgentRun(BaseModel):
     agent: str | None = None  # None 时回落全局设置（默认 pi）
 
 
+class AgentBatch(BaseModel):
+    project_ids: list[str] = Field(min_length=1)
+    prompt: str = Field(min_length=1)
+    agent: str | None = None
+
+
 class BuildRun(BaseModel):
     script: str
 
@@ -79,3 +85,4 @@ class SettingsUpdate(BaseModel):
     github_auto: bool | None = None
     github_visibility: str | None = None
     backup: bool | None = None
+    type_tabs: dict[str, list[str]] | None = None

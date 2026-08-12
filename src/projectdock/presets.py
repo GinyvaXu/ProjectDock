@@ -142,6 +142,43 @@ def _slug(title: str) -> str:
     return s.lower() or "app"
 
 
+TAB_LABELS = {
+    "overview": "概览",
+    "versions": "版本与构建",
+    "compliance": "合规",
+    "docs": "文稿版本",
+    "ai": "AI 管理",
+    "ailog": "AI 日志",
+}
+
+# 各类型的默认菜单模板（可在设置中覆盖）
+DEFAULT_TABS = {
+    "软件": ["overview", "versions", "compliance", "ai", "ailog"],
+    "网站": ["overview", "versions", "compliance", "ai", "ailog"],
+    "游戏": ["overview", "versions", "compliance", "ai", "ailog"],
+    "脚本": ["overview", "versions", "compliance", "ai", "ailog"],
+    "其他": ["overview", "versions", "compliance", "ai", "ailog"],
+    "PPT": ["overview", "docs", "ai", "ailog"],
+    "文稿": ["overview", "docs", "ai", "ailog"],
+}
+
+ALL_TAB_KEYS = tuple(TAB_LABELS)
+
+
+def tabs_for_type(ptype: str, override: dict | None = None) -> list[str]:
+    """返回类型的 Tab 模板；override 来自设置（type_tabs）。"""
+    tabs = list(DEFAULT_TABS.get(ptype, DEFAULT_TABS["其他"]))
+    if override and isinstance(override, dict):
+        custom = override.get(ptype)
+        if isinstance(custom, list) and custom:
+            tabs = [t for t in custom if t in TAB_LABELS]
+    if "overview" not in tabs:
+        tabs = ["overview"] + tabs
+    if "ailog" not in tabs:
+        tabs = tabs + ["ailog"]
+    return tabs
+
+
 PRESETS: dict[str, dict] = {
     "软件": {
         "label": "软件",

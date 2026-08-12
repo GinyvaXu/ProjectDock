@@ -19,6 +19,7 @@ class Job:
     queue: "queue.Queue" = field(default_factory=queue.Queue)
     error: Optional[str] = None
     exit_code: Optional[int] = None
+    started_at: float = field(default_factory=lambda: __import__("time").time())
 
 
 async def stream_command(on_line: Callable[[str], None], cmd: list[str], cwd: str | None) -> int:
@@ -136,6 +137,15 @@ class JobRegistry:
 
     def get(self, job_id: str) -> Job | None:
         return self._jobs.get(job_id)
+
+    def list(self, limit: int = 30) -> list[dict]:
+        """按启动时间倒序返回最近任务摘要。"""
+        jobs = sorted(self._jobs.values(), key=lambda j: j.started_at, reverse=True)
+        return [
+            {"id": j.id, "label": j.label, "status": j.status, "error": j.error,
+             "exit_code": j.exit_code, "started_at": j.started_at}
+            for j in jobs[:max(1, min(limit, 200))]
+        ]
 
     def status(self, job_id: str) -> dict | None:
         job = self._jobs.get(job_id)

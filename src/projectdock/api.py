@@ -15,13 +15,13 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import agent as agent_mod
-from . import ailog, builder, compliance, contract, github, presets, release, scanner, versioning
+from . import ailog, builder, compliance, console, contract, github, presets, release, scanner, versioning
 from .agent import AGENTS
 from .config import APP_NAME, APP_VERSION
 from .db import delete_custom_type, delete_project, get_custom_type, get_project, list_custom_types, list_projects, upsert_custom_type, upsert_project
-from .models import (AGENT_NAMES, PROJECT_TYPES, THEMES, AILogCreate, AgentRun, BuildRun,
-                     ComplianceFix, CustomTypeCreate, OpenPath, ProjectCreate, ProjectImport,
-                     ProjectInit, ReleaseRun, SettingsUpdate)
+from .models import (AGENT_NAMES, PROJECT_TYPES, THEMES, AILogCreate, AgentBatch, AgentRun,
+                     BuildRun, ComplianceFix, CustomTypeCreate, OpenPath, ProjectCreate,
+                     ProjectImport, ProjectInit, ReleaseRun, SettingsUpdate)
 from .state import AppState
 
 def _locate_web_dir() -> Path:
@@ -101,7 +101,7 @@ def create_app(state: AppState) -> FastAPI:
         return state.settings.update(
             root=payload.root, agent=payload.agent, theme=payload.theme,
             github_auto=payload.github_auto, github_visibility=payload.github_visibility,
-            backup=payload.backup,
+            backup=payload.backup, type_tabs=payload.type_tabs,
         )
 
     @api.get("/presets")
@@ -123,18 +123,24 @@ def create_app(state: AppState) -> FastAPI:
 
     @api.get("/types")
     def list_types() -> list[dict]:
+        override = state.settings.type_tabs
         out = []
         for t, spec in presets.PRESETS.items():
             out.append({
                 "name": t, "label": spec["label"], "description": spec["description"],
                 "dirs": spec.get("dirs", []), "files": spec.get("files", {}),
                 "git": spec.get("git", True), "custom": False,
+                "tabs": presets.tabs_for_type(t, override),
+                "tab_labels": presets.TAB_LABELS,
             })
         for row in list_custom_types(state.conn):
+            ptype = row["name"]
             out.append({
-                "name": row["name"], "label": row["label"], "description": row["description"],
+                "name": ptype, "label": row["label"], "description": row["description"],
                 "dirs": json.loads(row["dirs"]), "files": json.loads(row["files"]),
                 "git": bool(row["git"]), "custom": True,
+                "tabs": presets.tabs_for_type(ptype, override),
+                "tab_labels": presets.TAB_LABELS,
             })
         return out
 
@@ -373,8 +379,10 @@ def create_app(state: AppState) -> FastAPI:
         return FileResponse(str(logo), media_type=media)
 
     @api.get("/projects/{pid}/documents")
-    def list_documents(pid: str) -> list[dict]:
+    def list_documents(pid: str, scope: str = "keyword") -> list[dict]:
         proj = _resolve_project(pid)
+        if scope == "all":
+            return scanner.scan_documents(Path(proj["path"]))
         return scanner.find_documents(Path(proj["path"]))
 
     @api.post("/projects/{pid}/open-file")
@@ -402,6 +410,47 @@ def create_app(state: AppState) -> FastAPI:
             raise HTTPException(status_code=400, detail="当前平台暂不支持打开文件夹")
         os.startfile(proj["path"])  # type: ignore[attr-defined]
         return {"ok": True}
+
+    @api.get("/jobs")
+    def list_jobs(limit: int = 30) -> list[dict]:
+        return state.jobs.list(limit=limit)
+
+    @api.get("/console")
+    def console_overview() -> dict:
+        root = state.settings.root
+        activity = console.collect_activity(root, limit=30)
+        projects = []
+        for pj in scanner.scan_root(root, {p2["id"]: p2 for p2 in list_projects(state.conn)}):
+            last = next((e for e in activity if e.get("project") == pj["id"]), None)
+            projects.append({
+                "id": pj["id"], "title": pj["title"], "type": pj["type"],
+                "version": pj["version"], "compliant": pj["compliant"],
+                "has_git": pj["has_git"], "last_log": last,
+            })
+        return {
+            "activity": activity,
+            "running_jobs": [j for j in state.jobs.list() if j["status"] == "running"],
+            "failed_count": sum(1 for e in activity if e.get("result") == "failed"),
+            "projects": projects,
+        }
+
+    @api.post("/agent/batch")
+    def run_agent_batch(payload: AgentBatch) -> dict:
+        agent = payload.agent if payload.agent in AGENT_NAMES else state.settings.agent
+        jobs = []
+        for pid in payload.project_ids:
+            try:
+                proj = _resolve_project(pid)
+            except HTTPException:
+                jobs.append({"project_id": pid, "job_id": None, "error": "项目不存在"})
+                continue
+            spec = _type_spec(proj.get("type", "其他"))
+            prompt = agent_mod.system_prompt(proj["name"], proj["path"], spec) + "\n\n用户要求：" + payload.prompt
+            job = state.jobs.start_task(
+                f"批量·{proj['name']}", lambda emit, pj=Path(proj["path"]), pr=prompt, ag=agent:
+                agent_mod.run_agent_task(state, pj, ag, pr, emit))
+            jobs.append({"project_id": pid, "job_id": job.id})
+        return {"jobs": jobs, "agent": agent}
 
     @api.get("/agents")
     def list_agents() -> list[dict]:

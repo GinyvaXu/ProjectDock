@@ -20,6 +20,8 @@
     versions: null,
     builds: [],
     chatRunning: false,
+    view: "grid",
+    console: null,
   };
 
   const $ = (id) => document.getElementById(id);
@@ -36,13 +38,15 @@
 
   /* ============ 初始化 ============ */
   async function init() {
-    const [settings, presets, agents, projects, health] = await Promise.all([
-      api("/api/settings"), api("/api/presets"), api("/api/agents"), api("/api/projects"), api("/api/health"),
+    const [settings, presets, agents, projects, health, types] = await Promise.all([
+      api("/api/settings"), api("/api/presets"), api("/api/agents"), api("/api/projects"),
+      api("/api/health"), api("/api/types"),
     ]);
     S.settings = settings;
     S.presets = presets;
     S.agents = agents;
     S.projects = projects;
+    S.types = types;
     $("appVersion").textContent = "v" + health.version;
     applyTheme(settings.theme);
     fillTypeSelects();
@@ -73,7 +77,6 @@
       btn.className = "nav-item" + (S.filter === preset.type ? " active" : "");
       btn.dataset.filter = preset.type;
       btn.innerHTML = "<span class='nav-ico'>•</span><span>" + esc(preset.label) + "</span><span class='count'>" + (counts[preset.type] || 0) + "</span>";
-      btn.addEventListener("click", () => setFilter(preset.type));
       wrap.appendChild(btn);
     });
   }
@@ -138,6 +141,7 @@
     document.querySelectorAll(".nav-item").forEach((el) => {
       el.classList.toggle("active", el.dataset.filter === type);
     });
+    if (S.view !== "grid") showGrid();
     renderGrid();
   }
 
@@ -157,6 +161,7 @@
     $("drawerLogo").innerHTML = logoHTML(proj);
     $("drawerPath").textContent = proj.path;
     $("drawerPath").title = proj.path;
+    renderDrawerTabs(proj.type);
     showTab("overview");
     renderOverview(proj);
     showDrawer();
@@ -198,6 +203,20 @@
     backdrop.style.opacity = "0";
   }
 
+  function tabsFor(type) {
+    const t = S.types.find((x) => x.name === type);
+    if (t && Array.isArray(t.tabs) && t.tabs.length) return t.tabs;
+    return ["overview", "versions", "compliance", "ai", "ailog"];
+  }
+
+  function renderDrawerTabs(type) {
+    const wrap = $("drawerTabs");
+    const t = S.types.find((x) => x.name === type) || { tab_labels: {} };
+    wrap.innerHTML = tabsFor(type).map((key) =>
+      "<button class='tab' data-tab='" + esc(key) + "'>" + esc(t.tab_labels[key] || key) + "</button>"
+    ).join("");
+  }
+
   function showTab(tab) {
     S.currentTab = tab;
     document.querySelectorAll(".tab").forEach((el) => el.classList.toggle("active", el.dataset.tab === tab));
@@ -208,6 +227,8 @@
     panel.classList.add("panel-in");
     if (tab === "versions" && S.versions) renderVersions();
     if (tab === "compliance") renderCompliance();
+    if (tab === "docs") renderDocs();
+    if (tab === "ailog") renderAILog();
   }
 
   function renderOverview(proj) {
@@ -338,6 +359,176 @@
         closeDrawer();
         await refresh();
       } catch (err) { toast(err.message, "err"); }
+    }
+  }
+
+  /* ============ 文稿版本 / AI 日志 / 总控台 ============ */
+  async function renderDocs() {
+    if (!S.current) return;
+    const panel = $("panel-docs");
+    if (!panel) return;
+    panel.innerHTML = "<div class='build-log'>加载文稿…</div>";
+    try {
+      const docs = await api("/api/projects/" + encodeURIComponent(S.current.id) + "/documents?scope=all");
+      if (!docs.length) {
+        panel.innerHTML = "<div class='build-log'>未找到文档（支持 docx/doc/pdf/pptx/xlsx/md/txt）</div>";
+        return;
+      }
+      const groups = {};
+      docs.forEach((d) => { (groups[d.group] = groups[d.group] || []).push(d); });
+      let html = "";
+      Object.keys(groups).forEach((g) => {
+        html += "<div class='ver-block'><div class='ver-head'><h4>" + esc(g) + " <span class='latest-note'>" + groups[g].length + " 个</span></h4></div>";
+        html += groups[g].map((d) =>
+          "<div class='artifact'><span class='a-name'>" + esc(d.name) + "</span>" +
+          "<span class='a-size'>" + fmtSize(d.size) + "</span><span class='spacer'></span>" +
+          "<button class='btn btn-sm' data-open='" + esc(d.path) + "'>打开</button>" +
+          "<button class='btn btn-sm' data-reveal='" + esc(d.path) + "'>位置</button></div>"
+        ).join("");
+        html += "</div>";
+      });
+      panel.innerHTML = html;
+      bindPathActions(panel);
+    } catch (err) {
+      panel.innerHTML = "<div class='build-log'>加载失败：" + esc(err.message) + "</div>";
+    }
+  }
+
+  async function renderAILog() {
+    if (!S.current) return;
+    const panel = $("panel-ailog");
+    if (!panel) return;
+    panel.innerHTML = "<div class='ver-block'><div class='ver-head'><h4>AI 操作日志</h4><button class='btn btn-sm' id='btnAILogRefresh'>刷新</button></div><div class='build-log'>加载中…</div></div>";
+    try {
+      const logs = await api("/api/projects/" + encodeURIComponent(S.current.id) + "/ai-logs");
+      const box = panel.querySelector(".build-log");
+      if (!logs.length) {
+        box.innerHTML = "（暂无 AI 操作日志）";
+      } else {
+        box.className = "ai-timeline";
+        box.innerHTML = "";
+        logs.forEach((e) => {
+          const cls = e.result === "done" ? "ok" : (e.result === "failed" ? "err" : "run");
+          box.innerHTML +=
+            "<div class='ai-entry'><div class='ai-head'><span class='git-dot " + (e.result === "done" ? "clean" : e.result === "failed" ? "dirty" : e.result === "run" ? "run" : "no") + "'></span>" +
+            "<span class='ai-agent'>" + esc(e.agent || "?") + "</span>" +
+            "<span class='ai-ts'>" + esc((e.ts || "").replace("T", " ").slice(0, 19)) + "</span>" +
+            "<span class='spacer'></span><span class='ai-result " + cls + "'>" + esc(e.result) + "</span></div>" +
+            "<div class='ai-action'>" + esc(e.action || "") + "</div>" +
+            (e.summary ? "<div class='ai-summary'>" + esc(e.summary) + "</div>" : "") +
+            ((e.details || e.backup || Object.keys(e.git || {}).length) ?
+              "<details class='ai-detail'><summary>详情</summary><div>" +
+              (e.details ? "<div>" + esc(e.details) + "</div>" : "") +
+              (e.backup ? "<div class='mono'>备份：" + esc(e.backup) + "</div>" : "") +
+              (e.git && e.git.head ? "<div class='mono'>Git：" + esc(e.git.head) + "，变更 " + esc(e.git.changed || 0) + " 项</div>" : "") +
+              "</div></details>" : "");
+        });
+      }
+      const ref = $("btnAILogRefresh");
+      if (ref) ref.addEventListener("click", renderAILog);
+    } catch (err) {
+      const box = panel.querySelector(".build-log");
+      if (box) box.innerHTML = "加载失败：" + esc(err.message);
+    }
+  }
+
+  function showConsole() {
+    S.view = "console";
+    document.querySelectorAll(".nav-item").forEach((el) => el.classList.remove("active"));
+    $("btnConsole").classList.add("active");
+    $("grid").hidden = true;
+    $("empty").hidden = true;
+    $("console").hidden = false;
+    renderConsole();
+  }
+
+  function showGrid() {
+    S.view = "grid";
+    document.querySelectorAll(".nav-item").forEach((el) => el.classList.remove("active"));
+    document.querySelectorAll(".nav-item[data-filter]").forEach((el) => el.classList.toggle("active", el.dataset.filter === S.filter));
+    $("console").hidden = true;
+    $("grid").hidden = false;
+    renderGrid();
+  }
+
+  async function renderConsole() {
+    const box = $("console");
+    if (!box) return;
+    box.innerHTML = "<div class='build-log'>加载总控台…</div>";
+    try {
+      const data = await api("/api/console");
+      S.console = data;
+      let html = "<div class='console-head'><h3>总控台</h3><button class='btn btn-sm' id='btnConsoleRefresh'>刷新</button></div>";
+      html += "<div class='console-grid'>";
+
+      html += "<div class='c-card'><div class='ver-head'><h4>运行中任务</h4><span class='latest-note'>" + data.running_jobs.length + " 个</span></div>";
+      html += data.running_jobs.length
+        ? data.running_jobs.map((j) => "<div class='ai-entry'><span class='git-dot run'></span><span>" + esc(j.label) + "</span></div>").join("")
+        : "<div class='git-row'><span>当前没有运行中的任务</span></div>";
+      html += "</div>";
+
+      html += "<div class='c-card c-wide'><div class='ver-head'><h4>最近 AI 操作</h4></div>";
+      if (!data.activity.length) {
+        html += "<div class='git-row'><span>还没有任何 AI 操作日志</span></div>";
+      } else {
+        html += data.activity.map((e) =>
+          "<div class='ai-entry'><span class='git-dot " + (e.result === "done" ? "clean" : e.result === "failed" ? "dirty" : e.result === "run" ? "run" : "no") + "'></span>" +
+          "<span class='ai-ts'>" + esc((e.ts || "").replace("T", " ").slice(0, 16)) + "</span>" +
+          "<span class='ai-agent'>" + esc(e.project || "") + "</span>" +
+          "<span class='ai-action' title='" + esc(e.action || "") + "'>" + esc(e.action || "") + "</span>" +
+          "<span class='spacer'></span><span class='ai-result " + (e.result === "done" ? "ok" : e.result === "failed" ? "err" : "run") + "'>" + esc(e.result) + "</span></div>"
+        ).join("");
+      }
+      html += "</div>";
+
+      html += "<div class='c-card c-wide'><div class='ver-head'><h4>项目状态</h4><span class='latest-note'>" + data.projects.length + " 个</span></div>";
+      html += "<div class='proj-table'>" + data.projects.map((pj) =>
+        "<div class='proj-row' data-pid='" + esc(pj.id) + "'><span class='badge " + esc(pj.type) + "'>" + esc(pj.type) + "</span>" +
+        "<span class='proj-title'>" + esc(pj.title) + "</span>" +
+        (pj.version ? "<span class='proj-ver'>v" + esc(pj.version) + "</span>" : "<span class='proj-ver dim'>—</span>") +
+        (pj.compliant ? "<span class='src-badge archived'>合规</span>" : "<span class='src-badge unarchived'>待整改</span>") +
+        (pj.has_git ? "<span class='git-ok'>git</span>" : "<span class='git-no'>git</span>") + "</div>"
+      ).join("") + "</div>";
+      html += "</div>";
+
+      html += "<div class='c-card'><div class='ver-head'><h4>批量下指令</h4></div>";
+      html += "<div class='batch-projects'>" + data.projects.map((pj) =>
+        "<label class='check'><input type='checkbox' class='batch-pick' value='" + esc(pj.id) + "'><span>" + esc(pj.title) + "</span></label>"
+      ).join("") + "</div>";
+      html += "<textarea id='batchPrompt' class='batch-prompt' rows='3' placeholder='对选中的项目下达统一指令…'></textarea>";
+      html += "<div class='action-row'><button class='btn btn-sm btn-primary' id='btnBatchRun'>向选中项目下达</button></div>";
+      html += "<div id='batchLog'></div>";
+      html += "</div>";
+
+      html += "</div>";
+      box.innerHTML = html;
+      const ref = $("btnConsoleRefresh");
+      if (ref) ref.addEventListener("click", renderConsole);
+      box.querySelectorAll(".proj-row").forEach((row) => {
+        row.addEventListener("click", () => openDrawer(row.dataset.pid));
+      });
+      const batch = $("btnBatchRun");
+      if (batch) batch.addEventListener("click", runBatch);
+    } catch (err) {
+      box.innerHTML = "<div class='build-log'>加载失败：" + esc(err.message) + "</div>";
+    }
+  }
+
+  async function runBatch() {
+    const ids = Array.from(document.querySelectorAll(".batch-pick:checked")).map((el) => el.value);
+    if (!ids.length) { toast("请先选择至少一个项目", "err"); return; }
+    const prompt = $("batchPrompt").value.trim();
+    if (!prompt) { toast("请输入指令", "err"); return; }
+    const log = $("batchLog");
+    if (!log) return;
+    log.innerHTML = "<div class='build-status'>正在启动 " + ids.length + " 个任务…</div>";
+    try {
+      const res = await api("/api/agent/batch", { method: "POST", body: { project_ids: ids, prompt: prompt } });
+      log.innerHTML = "<div class='build-status ok'>已启动 " + res.jobs.length + " 个任务（失败 " + res.jobs.filter((j) => j.error).length + "），可到各项目「AI 日志」查看</div>";
+      toast("批量任务已启动");
+      setTimeout(() => renderConsole(), 3000);
+    } catch (err) {
+      log.innerHTML = "<div class='build-status err'>失败：" + esc(err.message) + "</div>";
     }
   }
 
@@ -727,6 +918,43 @@
   }
 
   /* ============ 设置 ============ */
+  function renderTypeTabsEditor() {
+    const wrap = $("typeTabsEditor");
+    if (!wrap || !S.types.length) return;
+    const tabLabels = S.types[0].tab_labels || {};
+    const keys = Object.keys(tabLabels);
+    const always = ["overview", "ailog"];
+    wrap.innerHTML = "";
+    S.types.forEach((t) => {
+      const block = document.createElement("div");
+      block.className = "tt-type";
+      const title = document.createElement("div");
+      title.className = "tt-title";
+      title.textContent = (t.custom ? "（自定义）" : "") + " " + t.label;
+      block.appendChild(title);
+      const grid = document.createElement("div");
+      grid.className = "tt-grid";
+      keys.forEach((key) => {
+        const locked = always.indexOf(key) >= 0;
+        const on = locked || (Array.isArray(t.tabs) && t.tabs.indexOf(key) >= 0);
+        const label = document.createElement("label");
+        label.className = "tt-check" + (locked ? " locked" : "");
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.name = "tab_" + t.name + "_" + key;
+        cb.checked = on;
+        cb.disabled = locked;
+        label.appendChild(cb);
+        const span = document.createElement("span");
+        span.textContent = tabLabels[key] || key;
+        label.appendChild(span);
+        grid.appendChild(label);
+      });
+      block.appendChild(grid);
+      wrap.appendChild(block);
+    });
+  }
+
   function openSettings() {
     const form = $("settingsForm");
     form.elements.root.value = S.settings.root;
@@ -735,12 +963,24 @@
     form.elements.github_auto.checked = !!S.settings.github_auto;
     form.elements.github_visibility.value = S.settings.github_visibility || "private";
     form.elements.backup.checked = !!S.settings.backup;
+    renderTypeTabsEditor();
     openModal("settings");
   }
 
   async function saveSettings(ev) {
     ev.preventDefault();
     const form = ev.target;
+    const tabLabels = (S.types.length && S.types[0].tab_labels) || {};
+    const keys = Object.keys(tabLabels);
+    const typeTabs = {};
+    S.types.forEach((t) => {
+      const checked = [];
+      keys.forEach((key) => {
+        const cb = form.elements["tab_" + t.name + "_" + key];
+        if (cb && cb.checked) checked.push(key);
+      });
+      if (checked.length) typeTabs[t.name] = checked;
+    });
     try {
       S.settings = await api("/api/settings", {
         method: "PUT",
@@ -751,11 +991,13 @@
           github_auto: form.elements.github_auto.checked,
           github_visibility: form.elements.github_visibility.value,
           backup: form.elements.backup.checked,
+          type_tabs: typeTabs,
         },
       });
       applyTheme(S.settings.theme);
       closeModal("settings");
       toast("设置已保存");
+      S.types = await api("/api/types");
       await refresh();
     } catch (err) { toast(err.message, "err"); }
   }
@@ -903,7 +1145,14 @@
     $("btnOpenFolder").addEventListener("click", () => handleOverviewAction("open"));
     $("btnCopyPath").addEventListener("click", () => handleOverviewAction("copy"));
     $("backdrop").addEventListener("click", closeDrawer);
-    document.querySelectorAll(".tab").forEach((el) => el.addEventListener("click", () => showTab(el.dataset.tab)));
+    $("drawerTabs").addEventListener("click", (e) => {
+      const btn = e.target.closest(".tab");
+      if (btn) showTab(btn.dataset.tab);
+    });
+    $("btnConsole").addEventListener("click", showConsole);
+    document.querySelectorAll(".nav-item[data-filter]").forEach((el) => {
+      el.addEventListener("click", () => setFilter(el.dataset.filter));
+    });
     document.querySelectorAll("[data-close]").forEach((el) => el.addEventListener("click", () => closeModal(el.dataset.close)));
     $("newForm").addEventListener("submit", createProject);
     $("importForm").addEventListener("submit", importProject);

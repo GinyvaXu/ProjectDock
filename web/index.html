@@ -15,6 +15,7 @@
     </div>
     <nav class="nav">
       <button class="nav-item active" data-filter="all"><span class="nav-ico">◉</span><span>全部项目</span><span class="count" id="countAll">0</span></button>
+      <button class="nav-item" id="btnConsole" data-view="console"><span class="nav-ico">▦</span><span>总控台</span></button>
       <div class="nav-label">类型</div>
       <div class="type-filters" id="typeFilters"></div>
     </nav>
@@ -34,6 +35,7 @@
       <button class="btn btn-primary" id="btnNewProject"><span>＋</span> 新建项目</button>
     </header>
     <section class="grid" id="grid"></section>
+    <section class="console" id="console" hidden></section>
     <section class="empty" id="empty" hidden>
       <div class="empty-ico" id="emptyIco">▢</div>
       <p id="emptyTitle">这里还没有项目</p>
@@ -58,16 +60,13 @@
         <button class="icon-btn" id="btnCopyPath" title="复制路径">⧉</button>
       </div>
     </header>
-    <nav class="tabs">
-      <button class="tab active" data-tab="overview">概览</button>
-      <button class="tab" data-tab="versions">版本与构建</button>
-      <button class="tab" data-tab="compliance">合规</button>
-      <button class="tab" data-tab="ai">AI 管理</button>
-    </nav>
+    <nav class="tabs" id="drawerTabs"></nav>
     <div class="drawer-body">
       <section class="panel active" id="panel-overview"></section>
       <section class="panel" id="panel-versions"></section>
       <section class="panel" id="panel-compliance"></section>
+      <section class="panel" id="panel-docs"></section>
+      <section class="panel" id="panel-ailog"></section>
       <section class="panel" id="panel-ai">
         <div class="chat">
           <div class="chat-msgs" id="chatMsgs">
@@ -126,6 +125,7 @@
         <label class="check"><input type="checkbox" name="github_auto" checked><span>新建项目自动创建 GitHub 仓库并推送</span></label>
         <label class="field"><span>仓库可见性</span><select name="github_visibility"><option value="private">私有</option><option value="public">公开</option></select></label>
         <label class="check"><input type="checkbox" name="backup" checked><span>AI 任务 / 发布前自动备份（zip 快照到 versions/backups/）</span></label>
+        <label class="field"><span>类型菜单模板（勾选该类型显示的菜单；软件类含版本/构建，文稿类显示文稿版本）</span><div class="type-tabs-editor" id="typeTabsEditor"></div></label>
         <footer class="modal-foot">
           <button type="button" class="btn" id="btnManageTypes">自定义类型</button>
           <button type="button" class="btn" data-close="settings">取消</button>

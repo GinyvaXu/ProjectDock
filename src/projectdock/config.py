@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 
 APP_NAME = "ProjectDock"
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.2.0"
 
 
 def app_data_dir() -> Path:
@@ -41,6 +41,7 @@ class Settings:
         "github_auto": True,
         "github_visibility": "private",
         "backup": True,
+        "type_tabs": {},
     }
 
     def __init__(self, data_dir: Path | None = None):
@@ -84,6 +85,11 @@ class Settings:
     def backup(self) -> bool:
         return bool(self._data.get("backup", True))
 
+    @property
+    def type_tabs(self) -> dict:
+        value = self._data.get("type_tabs", {})
+        return value if isinstance(value, dict) else {}
+
     def as_dict(self) -> dict:
         return {
             "root": str(self.root),
@@ -92,6 +98,7 @@ class Settings:
             "github_auto": self.github_auto,
             "github_visibility": self.github_visibility,
             "backup": self.backup,
+            "type_tabs": self.type_tabs,
         }
 
     def update(self, **kwargs) -> dict:
@@ -104,6 +111,8 @@ class Settings:
                 self._data[key] = value
             elif key in ("github_auto", "backup"):
                 self._data[key] = bool(value)
+            elif key == "type_tabs":
+                self._data[key] = value if isinstance(value, dict) else {}
         self.save()
         return self.as_dict()
 

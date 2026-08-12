@@ -2,6 +2,17 @@
 
 本文件记录 ProjectDock 的版本迭代。格式：语义化版本 + 日期 + 变更分组。
 
+## [0.2.0] - 2026-08-12
+### Added（v0.2 阶段 2：AI 闭环 UI 化 + 类型模板 + 总控台）
+- 主页总控台：跨项目聚合 AI 操作时间线 / 运行中任务 / 项目合规与版本状态 / 失败计数，卡片式 iOS 风格布局
+- 批量下指令：总控台勾选多个项目，统一向 AI agent 下达指令，逐项目生成任务并自动写 AI 日志
+- AI 日志时间线：每个项目独立「AI 日志」菜单，只读展示操作记录（agent/时间/动作/结果/详情/备份/Git），running 状态脉冲提示
+- AI 管理与日志分离：项目抽屉三区（AI 管理对话 / AI 日志 / 概览状态），符合 agent 交互习惯
+- 类型菜单模板：设置面板为每个类型勾选显示的菜单（概览/版本构建/合规/文稿版本/AI 管理/AI 日志），可持久化覆盖；文稿类型默认显示「文稿版本」分组而非版本/构建
+- 文稿版本分组：按文件类型（Word/PDF/PPT/表格/Markdown/文本）分组展示，组内按修改时间倒序，跳过 versions/dist/.venv 等目录
+- /api/console、/api/jobs、/api/agent/batch、/api/projects/{id}/documents?scope=all 等新端点；/api/types 返回 tabs 模板与 tab_labels
+- 文档整理扫描 scan_documents() 与跨项目日志聚合 collect_activity()
+- Dogfood 阶段 2：ProjectDock 自身迭代继续按契约执行（本条目即由该流程产生）
 ## [0.1.0] - 2026-08-12
 ### Added
 - 项目创建与管理：支持 软件/网站/游戏/PPT/文稿/脚本/其他 类型，自动命名 项目NN-类型-名称
