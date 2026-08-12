@@ -26,6 +26,7 @@ def main() -> None:
         "--workpath", str(ROOT / "build" / "release"),
         "--specpath", str(ROOT / "build"),
         "--add-data", f"{WEB};web",
+        "--paths", str(ROOT / "src"),
         "--collect-all", "uvicorn",
         "--collect-all", "fastapi",
         "--hidden-import", "pydantic",
