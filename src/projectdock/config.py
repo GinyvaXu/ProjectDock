@@ -34,7 +34,14 @@ def default_root() -> Path:
 class Settings:
     """持久化设置，保存在 settings.json。"""
 
-    DEFAULTS = {"root": "", "agent": "claude", "theme": "system"}
+    DEFAULTS = {
+        "root": "",
+        "agent": "pi",
+        "theme": "system",
+        "github_auto": True,
+        "github_visibility": "private",
+        "backup": True,
+    }
 
     def __init__(self, data_dir: Path | None = None):
         self.data_dir = data_dir or app_data_dir()
@@ -65,8 +72,27 @@ class Settings:
     def theme(self) -> str:
         return self._data.get("theme", "system")
 
+    @property
+    def github_auto(self) -> bool:
+        return bool(self._data.get("github_auto", True))
+
+    @property
+    def github_visibility(self) -> str:
+        return self._data.get("github_visibility", "private")
+
+    @property
+    def backup(self) -> bool:
+        return bool(self._data.get("backup", True))
+
     def as_dict(self) -> dict:
-        return {"root": str(self.root), "agent": self.agent, "theme": self.theme}
+        return {
+            "root": str(self.root),
+            "agent": self.agent,
+            "theme": self.theme,
+            "github_auto": self.github_auto,
+            "github_visibility": self.github_visibility,
+            "backup": self.backup,
+        }
 
     def update(self, **kwargs) -> dict:
         for key, value in kwargs.items():
@@ -74,8 +100,10 @@ class Settings:
                 continue
             if key == "root":
                 self.root = value
-            elif key in ("agent", "theme"):
+            elif key in ("agent", "theme", "github_visibility"):
                 self._data[key] = value
+            elif key in ("github_auto", "backup"):
+                self._data[key] = bool(value)
         self.save()
         return self.as_dict()
 

@@ -19,6 +19,7 @@ def state(tmp_path):
     root.mkdir()
     settings = Settings(data_dir)
     settings.root = str(root)
+    settings.update(github_auto=False, backup=True)
     conn = connect(data_dir / "data.db")
     st = AppState(settings, conn, JobRegistry())
     return st

@@ -10,6 +10,7 @@
   const S = {
     settings: null,
     presets: [],
+    types: [],
     agents: [],
     projects: [],
     filter: "all",
@@ -79,7 +80,7 @@
     return list;
   }
 
-  function cardHTML(p, i) {
+  function cardHTML(p) {
     return "<div class='card' data-id='" + esc(p.id) + "' style='opacity:0'>" +
       "<div class='card-top'>" +
         "<span class='badge " + esc(p.type) + "'>" + esc(p.type) + "</span>" +
@@ -103,7 +104,7 @@
     const frag = document.createDocumentFragment();
     list.forEach((p, i) => {
       const el = document.createElement("div");
-      el.innerHTML = cardHTML(p, i);
+      el.innerHTML = cardHTML(p);
       const card = el.firstElementChild;
       card.addEventListener("click", () => openDrawer(p.id));
       frag.appendChild(card);
@@ -156,7 +157,6 @@
     document.body.style.overflow = "hidden";
     requestAnimationFrame(() => {
       Spring.slideIn(drawer, { stiffness: 200, damping: 30 });
-      Spring.fadeIn(backdrop);
       backdrop.style.opacity = "1";
     });
   }
@@ -242,6 +242,7 @@
     const versions = S.versions || { version: null, changelog: [], artifacts: { versions: [], dist: [] }, has_versions_dir: false, has_dist_dir: false };
     const id = S.current.id;
     let html = "";
+    html += "<div style='display:flex;justify-content:flex-end;margin-bottom:12px'><button class='btn btn-primary btn-sm' id='btnReleaseWizard'>发布向导</button></div>";
     html += "<div class='ver-block'><div class='ver-head'><h4>当前版本</h4></div>" +
       "<div class='overview-hero' style='margin-bottom:0'>" +
         (versions.version ? "<div class='ov-version'>v" + esc(versions.version) + "</div>" : "<div class='ov-sub'>项目根目录没有 VERSION 文件</div>") +
@@ -307,6 +308,8 @@
     panel.querySelectorAll("[data-build]").forEach((btn) => {
       btn.addEventListener("click", () => runBuild(btn.dataset.build));
     });
+    const wizard = $("btnReleaseWizard");
+    if (wizard) wizard.addEventListener("click", openReleaseModal);
   }
 
   async function runBuild(script) {
@@ -335,6 +338,66 @@
       }
     }, (err) => {
       if (err && !status.textContent) { status.textContent = "连接中断"; status.className = "build-status err"; }
+    });
+  }
+
+  /* ============ 发布向导 ============ */
+  function bumpVersion(v, part) {
+    const m = String(v || "").replace(/^v/, "").match(/^(\d+)\.(\d+)\.(\d+)/);
+    if (!m) return "0.1.0";
+    let a = parseInt(m[1], 10), b = parseInt(m[2], 10), c = parseInt(m[3], 10);
+    if (part === "major") { a += 1; b = 0; c = 0; }
+    else if (part === "minor") { b += 1; c = 0; }
+    else { c += 1; }
+    return a + "." + b + "." + c;
+  }
+
+  function openReleaseModal() {
+    const form = $("releaseForm");
+    const current = S.current.version || "0.1.0";
+    form.elements.current.value = current;
+    form.elements.version.value = bumpVersion(current, "patch");
+    form.elements.changelog.value = "";
+    form.elements.push.checked = true;
+    const sel = form.elements.build;
+    sel.innerHTML = "<option value=''>不构建</option>" + S.builds.map((b) => "<option value='" + esc(b.name) + "'>" + esc(b.name) + "</option>").join("");
+    $("releaseLogBox").innerHTML = "";
+    openModal("release");
+  }
+
+  async function startRelease(ev) {
+    ev.preventDefault();
+    const form = ev.target;
+    const body = {
+      version: form.elements.version.value.trim(),
+      changelog: form.elements.changelog.value.trim(),
+      build_script: form.elements.build.value || null,
+      push: form.elements.push.checked,
+    };
+    const box = $("releaseLogBox");
+    box.innerHTML = "<div class='build-log'></div><div class='build-status'>发布中…</div>";
+    const log = box.querySelector(".build-log");
+    const status = box.querySelector(".build-status");
+    form.querySelectorAll("input, select, textarea, button").forEach((el) => { el.disabled = true; });
+    let jobId;
+    try {
+      const res = await api("/api/projects/" + encodeURIComponent(S.current.id) + "/release", { method: "POST", body: body });
+      jobId = res.job_id;
+    } catch (err) {
+      status.textContent = "启动失败：" + err.message;
+      status.className = "build-status err";
+      form.querySelectorAll("input, select, textarea, button").forEach((el) => { el.disabled = false; });
+      return;
+    }
+    streamEvents("/api/jobs/" + jobId + "/stream", (data) => {
+      if (data.type === "line") log.textContent += data.text + "\n";
+      if (data.type === "end") {
+        status.textContent = data.status === "done" ? "发布完成 ✓" : "发布失败：" + (data.error || "");
+        status.className = "build-status " + (data.status === "done" ? "ok" : "err");
+        form.querySelectorAll("input, select, textarea, button").forEach((el) => { el.disabled = false; });
+      }
+    }, () => {
+      form.querySelectorAll("input, select, textarea, button").forEach((el) => { el.disabled = false; });
     });
   }
 
@@ -374,15 +437,13 @@
     S.chatRunning = true;
     $("chatSend").disabled = true;
     $("chatInput").disabled = true;
-    let jobId = null;
     try {
       const res = await api("/api/agent/run", {
         method: "POST",
         body: { project_id: S.current.id, prompt: prompt, agent: agent },
       });
-      jobId = res.job_id;
       aiEl.textContent = "";
-      streamEvents("/api/jobs/" + jobId + "/stream", (data) => {
+      streamEvents("/api/jobs/" + res.job_id + "/stream", (data) => {
         if (data.type === "line") {
           aiEl.textContent = (aiEl.textContent ? aiEl.textContent + "\n" : "") + data.text;
           aiEl.classList.remove("running");
@@ -413,7 +474,7 @@
     const opts = S.presets.map((p) => "<option value='" + esc(p.type) + "'>" + esc(p.label) + "</option>").join("");
     $("newType").innerHTML = opts;
     $("importType").innerHTML = opts;
-    $("newType").addEventListener("change", updatePresetHint);
+    $("newType").onchange = updatePresetHint;
     updatePresetHint();
   }
 
@@ -440,9 +501,13 @@
 
   /* ============ 设置 ============ */
   function openSettings() {
-    $("settingsForm").elements.root.value = S.settings.root;
-    $("settingsForm").elements.agent.value = S.settings.agent;
-    $("settingsForm").elements.theme.value = S.settings.theme;
+    const form = $("settingsForm");
+    form.elements.root.value = S.settings.root;
+    form.elements.agent.value = S.settings.agent;
+    form.elements.theme.value = S.settings.theme;
+    form.elements.github_auto.checked = !!S.settings.github_auto;
+    form.elements.github_visibility.value = S.settings.github_visibility || "private";
+    form.elements.backup.checked = !!S.settings.backup;
     openModal("settings");
   }
 
@@ -452,13 +517,88 @@
     try {
       S.settings = await api("/api/settings", {
         method: "PUT",
-        body: { root: form.elements.root.value, agent: form.elements.agent.value, theme: form.elements.theme.value },
+        body: {
+          root: form.elements.root.value,
+          agent: form.elements.agent.value,
+          theme: form.elements.theme.value,
+          github_auto: form.elements.github_auto.checked,
+          github_visibility: form.elements.github_visibility.value,
+          backup: form.elements.backup.checked,
+        },
       });
       applyTheme(S.settings.theme);
       closeModal("settings");
       toast("设置已保存");
       await refresh();
     } catch (err) { toast(err.message, "err"); }
+  }
+
+  /* ============ 自定义类型 ============ */
+  async function openTypesModal() {
+    S.types = await api("/api/types");
+    renderTypesList();
+    openModal("types");
+  }
+
+  function renderTypesList() {
+    const custom = S.types.filter((t) => t.custom);
+    $("customTypesList").innerHTML = custom.length
+      ? custom.map((t) =>
+        "<div class='artifact'><span class='a-name'>" + esc(t.label) + "（" + esc(t.name) + "）</span>" +
+        "<span class='a-size'>" + Object.keys(t.files).length + " 个文件 / " + (t.dirs.length ? esc(t.dirs.join("、")) : "无目录") + "</span>" +
+        "<span class='spacer'></span><button class='btn btn-sm btn-danger' data-del='" + esc(t.name) + "'>删除</button></div>"
+      ).join("")
+      : "<div class='build-log'>暂无自定义类型。内置类型：软件 / 网站 / 游戏 / PPT / 文稿 / 脚本 / 其他</div>";
+    $("customTypesList").querySelectorAll("[data-del]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        if (!window.confirm("删除自定义类型「" + btn.dataset.del + "」？已创建的项目不受影响。")) return;
+        try {
+          await api("/api/types/" + encodeURIComponent(btn.dataset.del), { method: "DELETE" });
+          toast("已删除类型");
+          await refreshPresets();
+          openTypesModal();
+        } catch (err) { toast(err.message, "err"); }
+      });
+    });
+  }
+
+  function parseFilesText(text) {
+    const files = {};
+    String(text).split(/^={3,}\s*$/m).forEach((block) => {
+      const lines = block.split("\n");
+      const name = lines.shift().trim();
+      if (name) files[name] = lines.join("\n");
+    });
+    return files;
+  }
+
+  async function addType(ev) {
+    ev.preventDefault();
+    const form = ev.target;
+    const dirs = form.elements.dirs.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
+    const body = {
+      name: form.elements.name.value.trim(),
+      label: form.elements.label.value.trim() || undefined,
+      description: form.elements.description.value.trim(),
+      dirs: dirs,
+      files: parseFilesText(form.elements.files.value),
+      git: form.elements.git.checked,
+    };
+    if (!body.name) return toast("请填写类型名称", "err");
+    try {
+      await api("/api/types", { method: "POST", body: body });
+      toast("已添加类型 " + body.name);
+      form.reset();
+      form.elements.git.checked = true;
+      await refreshPresets();
+      openTypesModal();
+    } catch (err) { toast(err.message, "err"); }
+  }
+
+  async function refreshPresets() {
+    S.presets = await api("/api/presets");
+    fillTypeSelects();
+    renderSidebar();
   }
 
   /* ============ 新建 / 导入 ============ */
@@ -470,6 +610,7 @@
       type: form.elements.type.value,
       description: form.elements.description.value.trim(),
       preset: form.elements.preset.checked,
+      github: form.elements.github.checked,
     };
     if (!body.name) return toast("请填写项目名称", "err");
     try {
@@ -477,8 +618,12 @@
       closeModal("new");
       toast("已创建 " + created.name);
       form.reset();
+      form.elements.preset.checked = true;
+      form.elements.github.checked = !!S.settings.github_auto;
       await refresh();
       openDrawer(created.id);
+      if (created.github && !created.github.ok) toast("GitHub：" + created.github.message, "err");
+      else if (created.github) toast("GitHub：" + created.github.message);
     } catch (err) { toast(err.message, "err"); }
   }
 
@@ -519,9 +664,13 @@
 
   /* ============ 事件 ============ */
   function bindEvents() {
-    $("btnNewProject").addEventListener("click", () => openModal("new"));
+    $("btnNewProject").addEventListener("click", () => {
+      $("newForm").elements.github.checked = !!S.settings.github_auto;
+      openModal("new");
+    });
     $("btnImport").addEventListener("click", () => openModal("import"));
     $("btnSettings").addEventListener("click", openSettings);
+    $("btnManageTypes").addEventListener("click", openTypesModal);
     $("searchInput").addEventListener("input", (e) => { S.search = e.target.value; renderGrid(); });
     $("btnDrawerClose").addEventListener("click", closeDrawer);
     $("btnOpenFolder").addEventListener("click", () => handleOverviewAction("open"));
@@ -532,6 +681,8 @@
     $("newForm").addEventListener("submit", createProject);
     $("importForm").addEventListener("submit", importProject);
     $("settingsForm").addEventListener("submit", saveSettings);
+    $("typesForm").addEventListener("submit", addType);
+    $("releaseForm").addEventListener("submit", startRelease);
     $("chatSend").addEventListener("click", sendChat);
     $("chatInput").addEventListener("keydown", (e) => { if (e.key === "Enter") sendChat(); });
     window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
@@ -540,7 +691,7 @@
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
         if (!$("drawer").hidden) closeDrawer();
-        ["new", "import", "settings"].forEach((n) => { if (!$(n + "Backdrop").hidden) closeModal(n); });
+        ["new", "import", "settings", "types", "release"].forEach((n) => { if (!$(n + "Backdrop").hidden) closeModal(n); });
       }
     });
   }

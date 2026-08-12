@@ -7,6 +7,7 @@ description: ProjectDock 项目坞的开发规范。当用户要求对 ProjectDo
 
 ## 架构
 - 后端：FastAPI（src/projectdock/api.py），无状态、通过 AppState 注入依赖
+- AI 与发布：agent.py（claude/pi 全自动 + 备份 + 任务报告）、github.py（自动建仓）、release.py（发布向导）
 - 前端：原生 HTML/CSS/JS（web/），弹簧动画在 web/js/spring.js，禁止引入构建步骤
 - 数据：SQLite（%APPDATA%/ProjectDock/data.db）+ 文件系统扫描；根目录可配置
 
@@ -25,4 +26,5 @@ description: ProjectDock 项目坞的开发规范。当用户要求对 ProjectDo
 ## 常见坑
 - Windows 中文路径：一律用 Python pathlib / PowerShell -LiteralPath
 - 子进程（agent/构建）用 creationflags=CREATE_NO_WINDOW，输出按行流式回传
+- Windows 下 npm 包装命令（pi.cmd / pi.ps1）不能直接被 create_subprocess_exec 执行，需经 agent.resolve_command 包装为 cmd /c
 - 不主动 push GitHub；推送前先 git status + git diff --stat 复核

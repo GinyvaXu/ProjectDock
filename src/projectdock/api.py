@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import queue as queue_module
+import subprocess
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
@@ -11,12 +12,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import builder, presets, scanner, versioning
-from .agent import AGENTS, build_command, system_prompt
+from . import agent as agent_mod
+from . import builder, github, presets, release, scanner, versioning
+from .agent import AGENTS
 from .config import APP_NAME, APP_VERSION
-from .db import delete_project, get_project, list_projects, upsert_project
+from .db import delete_custom_type, delete_project, get_custom_type, get_project, list_custom_types, list_projects, upsert_custom_type, upsert_project
 from .models import (AGENT_NAMES, PROJECT_TYPES, THEMES, AgentRun, BuildRun,
-                     ProjectCreate, ProjectImport, ProjectInit, SettingsUpdate)
+                     CustomTypeCreate, ProjectCreate, ProjectImport, ProjectInit,
+                     ReleaseRun, SettingsUpdate)
 from .state import AppState
 
 WEB_DIR = Path(__file__).resolve().parents[2] / "web"
@@ -44,6 +47,23 @@ def create_app(state: AppState) -> FastAPI:
             return {"id": pid, "name": pid, "type": "其他", "path": str(p), "description": ""}
         raise HTTPException(status_code=404, detail="项目不存在")
 
+    def _type_spec(ptype: str) -> dict | None:
+        if ptype in presets.PRESETS:
+            spec = presets.PRESETS[ptype]
+            return {
+                "name": ptype, "label": spec["label"], "description": spec["description"],
+                "dirs": spec.get("dirs", []), "files": spec.get("files", {}),
+                "git": spec.get("git", True), "custom": False,
+            }
+        row = get_custom_type(state.conn, ptype)
+        if row:
+            return {
+                "name": row["name"], "label": row["label"], "description": row["description"],
+                "dirs": json.loads(row["dirs"]), "files": json.loads(row["files"]),
+                "git": bool(row["git"]), "custom": True,
+            }
+        return None
+
     @api.get("/health")
     def health() -> dict:
         return {"ok": True, "app": APP_NAME, "version": APP_VERSION, "root": str(state.settings.root)}
@@ -58,18 +78,66 @@ def create_app(state: AppState) -> FastAPI:
             raise HTTPException(status_code=400, detail="未知的 agent")
         if payload.theme is not None and payload.theme not in THEMES:
             raise HTTPException(status_code=400, detail="未知的主题")
-        return state.settings.update(root=payload.root, agent=payload.agent, theme=payload.theme)
+        if payload.github_visibility is not None and payload.github_visibility not in ("private", "public"):
+            raise HTTPException(status_code=400, detail="未知的仓库可见性")
+        return state.settings.update(
+            root=payload.root, agent=payload.agent, theme=payload.theme,
+            github_auto=payload.github_auto, github_visibility=payload.github_visibility,
+            backup=payload.backup,
+        )
 
     @api.get("/presets")
     def list_presets() -> list[dict]:
-        return [{
-            "type": t,
-            "label": spec["label"],
-            "description": spec["description"],
-            "files": list(spec.get("files", {}).keys()),
-            "dirs": list(spec.get("dirs", [])),
-            "git": spec.get("git", True),
-        } for t, spec in presets.PRESETS.items()]
+        out = []
+        for t, spec in presets.PRESETS.items():
+            out.append({
+                "type": t, "label": spec["label"], "description": spec["description"],
+                "files": list(spec.get("files", {})), "dirs": list(spec.get("dirs", [])),
+                "git": spec.get("git", True), "custom": False,
+            })
+        for row in list_custom_types(state.conn):
+            out.append({
+                "type": row["name"], "label": row["label"], "description": row["description"],
+                "files": list(json.loads(row["files"])), "dirs": json.loads(row["dirs"]),
+                "git": bool(row["git"]), "custom": True,
+            })
+        return out
+
+    @api.get("/types")
+    def list_types() -> list[dict]:
+        out = []
+        for t, spec in presets.PRESETS.items():
+            out.append({
+                "name": t, "label": spec["label"], "description": spec["description"],
+                "dirs": spec.get("dirs", []), "files": spec.get("files", {}),
+                "git": spec.get("git", True), "custom": False,
+            })
+        for row in list_custom_types(state.conn):
+            out.append({
+                "name": row["name"], "label": row["label"], "description": row["description"],
+                "dirs": json.loads(row["dirs"]), "files": json.loads(row["files"]),
+                "git": bool(row["git"]), "custom": True,
+            })
+        return out
+
+    @api.post("/types", status_code=201)
+    def create_type(payload: CustomTypeCreate) -> dict:
+        name = payload.name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="类型名称不能为空")
+        if name in presets.PRESETS:
+            raise HTTPException(status_code=400, detail="与内置类型重名")
+        label = (payload.label or name).strip()
+        upsert_custom_type(state.conn, name, label, payload.description, payload.dirs, payload.files, payload.git)
+        return {"name": name, "label": label, "description": payload.description,
+                "dirs": payload.dirs, "files": payload.files, "git": payload.git, "custom": True}
+
+    @api.delete("/types/{name}")
+    def remove_type(name: str) -> dict:
+        if name in presets.PRESETS:
+            raise HTTPException(status_code=400, detail="内置类型不能删除")
+        delete_custom_type(state.conn, name)
+        return {"ok": True}
 
     @api.get("/projects")
     def list_all() -> list[dict]:
@@ -97,18 +165,31 @@ def create_app(state: AppState) -> FastAPI:
     def create_project(payload: ProjectCreate) -> dict:
         root = state.settings.root
         root.mkdir(parents=True, exist_ok=True)
-        ptype = payload.type if payload.type in PROJECT_TYPES else "其他"
+        ptype = payload.type
+        if ptype not in PROJECT_TYPES and not get_custom_type(state.conn, ptype):
+            ptype = "其他"
         folder_name = scanner.make_folder_name(root, ptype, payload.name)
         project_path = root / folder_name
         if project_path.exists():
             raise HTTPException(status_code=409, detail="同名项目已存在")
         preset_result = None
         if payload.preset:
-            preset_result = presets.apply_preset(project_path, ptype, payload.name, payload.description, git=True)
+            spec = _type_spec(ptype)
+            if spec and spec["custom"]:
+                preset_result = presets.apply_custom_preset(project_path, spec, payload.name, payload.description, git=True)
+            else:
+                preset_result = presets.apply_preset(project_path, ptype, payload.name, payload.description, git=True)
         else:
             project_path.mkdir(parents=True, exist_ok=True)
         upsert_project(state.conn, folder_name, folder_name, ptype, str(project_path),
                        payload.description, imported=False)
+
+        github_result = None
+        want_github = payload.github if payload.github is not None else state.settings.github_auto
+        if want_github and preset_result and preset_result.get("git") and not github.has_remote(project_path):
+            github_result = github.create_repo(project_path, github.repo_name_for(payload.name),
+                                               state.settings.github_visibility)
+
         return {
             "id": folder_name,
             "name": folder_name,
@@ -117,6 +198,7 @@ def create_app(state: AppState) -> FastAPI:
             "path": str(project_path),
             "description": payload.description,
             "preset": preset_result,
+            "github": github_result,
             "version": versioning.read_version(project_path),
         }
 
@@ -135,11 +217,15 @@ def create_app(state: AppState) -> FastAPI:
     @api.post("/projects/{pid}/init")
     def init_project(pid: str, payload: ProjectInit) -> dict:
         proj = _resolve_project(pid)
-        ptype = payload.type if payload.type in PROJECT_TYPES else proj.get("type", "其他")
+        ptype = payload.type if payload.type in PROJECT_TYPES or get_custom_type(state.conn, payload.type or "") else proj.get("type", "其他")
         parsed = scanner.parse_project_dir(pid)
         title = payload.name or (parsed[2] if parsed else proj["name"])
         description = payload.description if payload.description is not None else proj.get("description", "")
-        result = presets.apply_preset(Path(proj["path"]), ptype, title, description, git=payload.git)
+        spec = _type_spec(ptype)
+        if spec and spec["custom"]:
+            result = presets.apply_custom_preset(Path(proj["path"]), spec, title, description, git=payload.git)
+        else:
+            result = presets.apply_preset(Path(proj["path"]), ptype, title, description, git=payload.git)
         upsert_project(state.conn, pid, proj["name"], ptype, proj["path"], description,
                        imported=bool(proj.get("imported", False)))
         return result
@@ -148,6 +234,22 @@ def create_app(state: AppState) -> FastAPI:
     def get_versions(pid: str) -> dict:
         proj = _resolve_project(pid)
         return versioning.project_version_summary(Path(proj["path"]))
+
+    @api.get("/projects/{pid}/git-status")
+    def get_git_status(pid: str) -> dict:
+        proj = _resolve_project(pid)
+        p = Path(proj["path"])
+        if not (p / ".git").is_dir():
+            return {"has_git": False, "head": None, "dirty": False, "files": []}
+        try:
+            head = subprocess.run(["git", "log", "--oneline", "-1"], cwd=str(p), capture_output=True,
+                                   text=True, encoding="utf-8", errors="replace", timeout=15).stdout.strip()
+            status = subprocess.run(["git", "-c", "core.quotepath=false", "status", "--porcelain"], cwd=str(p), capture_output=True,
+                                    text=True, encoding="utf-8", errors="replace", timeout=15).stdout.splitlines()
+        except (subprocess.TimeoutExpired, OSError):
+            return {"has_git": True, "head": None, "dirty": False, "files": []}
+        return {"has_git": True, "head": head or None, "dirty": bool(status),
+                "files": [ln.strip()[:120] for ln in status[:30]]}
 
     @api.get("/projects/{pid}/builds")
     def list_builds(pid: str) -> list[dict]:
@@ -164,6 +266,18 @@ def create_app(state: AppState) -> FastAPI:
         job = state.jobs.start(builder.command_for(script), str(Path(proj["path"])), f"构建 {script['name']}")
         return {"job_id": job.id, "script": script["name"]}
 
+    @api.post("/projects/{pid}/release")
+    def run_release(pid: str, payload: ReleaseRun) -> dict:
+        proj = _resolve_project(pid)
+        version = payload.version.strip()
+        if not versioning.VERSION_RE.match("v" + version.lstrip("v")):
+            raise HTTPException(status_code=400, detail="版本号格式不正确（应为语义化版本，如 1.2.3）")
+        cfg = {"version": version, "changelog": payload.changelog,
+               "build_script": payload.build_script, "push": payload.push}
+        job = state.jobs.start_task(f"发布 v{version}",
+                                    lambda emit: release.run_release(state, Path(proj["path"]), cfg, emit))
+        return {"job_id": job.id, "version": version}
+
     @api.post("/projects/{pid}/open")
     def open_project(pid: str) -> dict:
         proj = _resolve_project(pid)
@@ -179,11 +293,14 @@ def create_app(state: AppState) -> FastAPI:
     @api.post("/agent/run")
     def run_agent(payload: AgentRun) -> dict:
         proj = _resolve_project(payload.project_id)
-        agent = payload.agent if payload.agent in AGENT_NAMES else "claude"
-        prompt = system_prompt(proj["name"], proj["path"]) + "\n\n用户要求：" + payload.prompt
-        cmd = build_command(agent, prompt)
-        job = state.jobs.start(cmd, str(Path(proj["path"])), f"AI · {AGENTS[agent]['label']}")
-        return {"job_id": job.id, "agent": agent}
+        agent = payload.agent if payload.agent in AGENT_NAMES else state.settings.agent
+        spec = _type_spec(proj.get("type", "其他"))
+        prompt = agent_mod.system_prompt(proj["name"], proj["path"], spec) + "\n\n用户要求：" + payload.prompt
+        job = state.jobs.start_task(
+            f"AI · {AGENTS[agent]['label']}",
+            lambda emit: agent_mod.run_agent_task(state, Path(proj["path"]), agent, prompt, emit),
+        )
+        return {"job_id": job.id, "agent": agent, "backup": state.settings.backup}
 
     @api.get("/jobs/{job_id}")
     def job_status(job_id: str) -> dict:

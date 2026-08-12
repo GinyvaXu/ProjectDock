@@ -104,6 +104,8 @@ def test_missing_project_404(client):
 
 def test_agent_command_and_prompt():
     cmd = build_command("claude", "帮我整理目录")
-    assert cmd == ["claude", "-p", "帮我整理目录"]
+    assert cmd == ["claude", "-p", "帮我整理目录", "--dangerously-skip-permissions"]
+    pi_cmd = build_command("pi", "帮我整理目录")
+    assert pi_cmd == ["pi", "-p", "帮我整理目录"]
     prompt = system_prompt("项目1-软件-A", "C:/x")
     assert "项目1-软件-A" in prompt

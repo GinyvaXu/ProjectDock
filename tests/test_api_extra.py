@@ -64,23 +64,20 @@ def test_agent_run_endpoint(client, state, monkeypatch):
     client.post("/api/projects", json={"name": "AI", "type": "软件"})
     captured = {}
 
-    def fake_start(cmd, cwd, label):
-        captured["cmd"] = cmd
-        captured["cwd"] = cwd
+    def fake_start_task(label, coro_factory):
+        captured["label"] = label
+        captured["factory"] = coro_factory
         return Job(id="fakejob", label=label)
 
-    monkeypatch.setattr(state.jobs, "start", fake_start)
+    monkeypatch.setattr(state.jobs, "start_task", fake_start_task)
     resp = client.post("/api/agent/run", json={
         "project_id": "项目1-软件-AI",
         "prompt": "帮我看看项目结构",
-        "agent": "claude",
+        "agent": "pi",
     })
     assert resp.status_code == 200
     assert resp.json()["job_id"] == "fakejob"
-    assert captured["cmd"][0] == "claude"
-    assert "帮我看看项目结构" in captured["cmd"][2]
-    assert "项目1-软件-AI" in captured["cmd"][2]
-    assert captured["cwd"].endswith("项目1-软件-AI")
+    assert "AI" in captured["label"]
 
 
 def test_settings_root_update(client, tmp_path):

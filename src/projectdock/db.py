@@ -16,6 +16,15 @@ CREATE TABLE IF NOT EXISTS projects (
     imported INTEGER NOT NULL DEFAULT 0,
     excluded INTEGER NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS project_types (
+    name TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    dirs TEXT NOT NULL DEFAULT '[]',
+    files TEXT NOT NULL DEFAULT '{}',
+    git INTEGER NOT NULL DEFAULT 1
+);
 """
 
 
@@ -27,7 +36,7 @@ def connect(db_path: Path) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path), check_same_thread=False)
     conn.row_factory = sqlite3.Row
-    conn.execute(SCHEMA)
+    conn.executescript(SCHEMA)
     _migrate(conn)
     conn.commit()
     return conn
@@ -72,4 +81,37 @@ def list_projects(conn) -> list[dict]:
 def delete_project(conn, project_id: str) -> None:
     """移除管理：标记 excluded=1，文件夹本身不动。重新导入即可恢复。"""
     conn.execute("UPDATE projects SET excluded = 1, updated_at = ? WHERE id = ?", (now(), project_id))
+    conn.commit()
+
+
+def list_custom_types(conn) -> list[dict]:
+    rows = conn.execute("SELECT * FROM project_types ORDER BY name").fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_custom_type(conn, name: str) -> dict | None:
+    row = conn.execute("SELECT * FROM project_types WHERE name = ?", (name,)).fetchone()
+    return dict(row) if row else None
+
+
+def upsert_custom_type(conn, name: str, label: str, description: str,
+                       dirs: list[str], files: dict[str, str], git: bool) -> None:
+    import json
+
+    conn.execute(
+        """INSERT INTO project_types (name, label, description, dirs, files, git)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(name) DO UPDATE SET
+             label = excluded.label,
+             description = excluded.description,
+             dirs = excluded.dirs,
+             files = excluded.files,
+             git = excluded.git""",
+        (name, label, description, json.dumps(dirs, ensure_ascii=False), json.dumps(files, ensure_ascii=False), 1 if git else 0),
+    )
+    conn.commit()
+
+
+def delete_custom_type(conn, name: str) -> None:
+    conn.execute("DELETE FROM project_types WHERE name = ?", (name,))
     conn.commit()

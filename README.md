@@ -4,11 +4,11 @@
 
 ## 功能总览
 
-1. **自由创建项目文件夹**：支持 软件 / 网站 / 游戏 / PPT / 文稿 / 脚本 / 其他 类型，自动按 项目NN-类型-名称 命名。
+1. **自由创建项目文件夹**：内置 软件 / 网站 / 游戏 / PPT / 文稿 / 脚本 / 其他 类型，支持自定义类型（目录结构 / 骨架文件 / 是否 git），自动按 项目NN-类型-名称 命名。
 2. **统一管理**：SQLite 索引 + 文件系统扫描双轨，搜索、类型筛选、导入已有文件夹、打开目录。
-3. **预设一键初始化**：按类型生成项目骨架（README / VERSION / CHANGELOG / .gitignore / AGENTS.md 等）+ git init + 首次提交。
-4. **AI 项目助手**：内置聊天面板，claude / pi 可切换，自然语言下指令，流式输出回显到界面。
-5. **版本与构建展示**：软件类项目直接呈现版本迭代（VERSION / CHANGELOG）、构建产物（versions/ / dist/）、更新内容，支持一键调用项目构建脚本。
+3. **预设一键初始化**：按类型生成项目骨架（README / VERSION / CHANGELOG / .gitignore / AGENTS.md 等）+ git init + 首次提交；可选自动创建 GitHub 仓库并推送。
+4. **AI 项目助手**：App 内嵌聊天面板，claude / pi 可切换（默认 pi），自然语言下指令，流式输出回显；全自动执行，任务前自动备份快照，任务后输出报告（操作 / Git 状态 / 最新提交）。
+5. **版本与构建展示 + 发布向导**：软件类项目读取本地约定文件（VERSION / CHANGELOG.md），直接呈现版本迭代、构建产物（versions/ / dist/）、更新内容；发布向导一键完成 版本号 → 更新日志 → 构建脚本 → git tag → 提交。
 
 ## 技术栈
 
@@ -26,10 +26,14 @@
 │   ├── state.py            # 全局状态（设置/数据库/根目录/任务注册表）
 │   ├── db.py               # SQLite 注册表
 │   ├── scanner.py          # 文件系统扫描与命名
-│   ├── presets.py          # 一键初始化预设
+│   ├── presets.py          # 一键初始化预设与自定义类型
 │   ├── versioning.py       # 版本/更新日志/构建产物解析
 │   ├── runner.py           # 子进程流式任务（agent 与构建共用）
 │   ├── builder.py          # 构建脚本发现与执行
+│   ├── agent.py            # AI 命令模板（claude/pi）与任务报告
+│   ├── backup.py           # 任务前 zip 快照备份
+│   ├── github.py           # 自动创建 GitHub 仓库并推送
+│   ├── release.py          # 发布向导（版本号/更新日志/tag）
 │   └── main.py             # 启动入口（uvicorn + pywebview）
 ├── web/                    # iOS 风格前端
 │   ├── index.html
@@ -62,8 +66,8 @@ python -m projectdock --no-webview --debug   # 仅启动后端，浏览器访问
 
 ## 路线图
 
-- v0.2：模板编辑器（自定义预设）、GitHub Releases 拉取与发布向导
-- v0.3：项目依赖图、批量操作、全局快捷键与托盘
+- v0.2：批量 AI 任务（多项目同时下指令）、模板导入/导出、GitHub Releases 拉取、自动更新
+- v0.3：项目依赖图、多根目录、全局快捷键与托盘
 
 ## 致谢
 

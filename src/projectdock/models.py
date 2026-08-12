@@ -12,6 +12,7 @@ class ProjectCreate(BaseModel):
     type: str = "其他"
     description: str = ""
     preset: bool = True
+    github: bool | None = None
 
 
 class ProjectImport(BaseModel):
@@ -37,7 +38,26 @@ class BuildRun(BaseModel):
     script: str
 
 
+class CustomTypeCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+    label: str | None = None
+    description: str = ""
+    dirs: list[str] = []
+    files: dict[str, str] = {}
+    git: bool = True
+
+
+class ReleaseRun(BaseModel):
+    version: str = Field(min_length=1)
+    changelog: str = ""
+    build_script: str | None = None
+    push: bool = False
+
+
 class SettingsUpdate(BaseModel):
     root: str | None = None
     agent: str | None = None
     theme: str | None = None
+    github_auto: bool | None = None
+    github_visibility: str | None = None
+    backup: bool | None = None

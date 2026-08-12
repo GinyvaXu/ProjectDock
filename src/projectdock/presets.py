@@ -215,13 +215,25 @@ PRESETS: dict[str, dict] = {
 
 def apply_preset(project_path: Path, ptype: str, title: str, description: str = "",
                  git: bool = True, git_identity: dict | None = None) -> dict:
-    """按类型在 project_path 生成骨架文件，并可选 git init + 首次提交。"""
+    """按内置类型在 project_path 生成骨架文件，并可选 git init + 首次提交。"""
     spec = PRESETS.get(ptype) or PRESETS["其他"]
+    return _apply_spec(project_path, spec, ptype, title, description, git, git_identity)
+
+
+def apply_custom_preset(project_path: Path, spec: dict, title: str, description: str = "",
+                        git: bool = True, git_identity: dict | None = None) -> dict:
+    """按自定义类型模板（dirs/files/git）生成骨架。spec 来自数据库 project_types。"""
+    return _apply_spec(project_path, spec, spec.get("label") or spec.get("name") or "自定义", title, description, git, git_identity)
+
+
+def _apply_spec(project_path: Path, spec: dict, ptype: str, title: str, description: str,
+                git: bool, git_identity: dict | None) -> dict:
     project_path.mkdir(parents=True, exist_ok=True)
     created: list[str] = []
     for rel in spec.get("dirs", []):
-        (project_path / rel).mkdir(parents=True, exist_ok=True)
-        created.append(rel + "/")
+        if rel:
+            (project_path / rel).mkdir(parents=True, exist_ok=True)
+            created.append(rel + "/")
     package = _slug(title)
     for rel, template in spec.get("files", {}).items():
         target = project_path / rel
