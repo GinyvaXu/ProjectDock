@@ -36,35 +36,57 @@ def _gh(args: list[str], timeout: int = DEFAULT_TIMEOUT) -> subprocess.Completed
                           encoding="utf-8", errors="replace", timeout=timeout)
 
 
+def _api_latest(repo: str, token: str = "") -> dict | None:
+    """GET /releases/latest（私有仓库带 gh 令牌），返回 JSON dict 或 None。"""
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "ProjectDock"}
+    if token:
+        headers["Authorization"] = "Bearer " + token
+    req = urllib.request.Request(f"https://api.github.com/repos/{repo}/releases/latest",
+                                 headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            return data if isinstance(data, dict) else None
+    except (urllib.error.URLError, OSError, ValueError, json.JSONDecodeError):
+        return None
+
+
 def latest_release(repo: str) -> dict | None:
     """返回最新 Release 的 {tag, notes, published_at, url}；获取失败返回 None。"""
-    if repo and shutil.which("gh"):
-        try:
-            r = _gh(["release", "view", "latest", "--repo", repo,
-                     "--json", "tagName,body,publishedAt,url"])
-            if r.returncode == 0 and r.stdout.strip():
-                data = json.loads(r.stdout)
-                return {
-                    "tag": data.get("tagName") or "",
-                    "notes": data.get("body") or "",
-                    "published_at": data.get("publishedAt") or "",
-                    "url": data.get("url") or "",
-                }
-        except (subprocess.TimeoutExpired, OSError, json.JSONDecodeError):
-            pass
-    # 兜底：GitHub API（公开仓库可用；私有仓库需 token，失败返回 None）
-    try:
-        with urllib.request.urlopen(f"https://api.github.com/repos/{repo}/releases/latest",
-                                    timeout=15) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+    if repo:
+        if shutil.which("gh"):
+            try:
+                # gh release view 不带 tag 参数时默认展示最新 Release
+                r = _gh(["release", "view", "--repo", repo,
+                         "--json", "tagName,body,publishedAt,url"])
+                if r.returncode == 0 and r.stdout.strip():
+                    data = json.loads(r.stdout)
+                    return {
+                        "tag": data.get("tagName") or "",
+                        "notes": data.get("body") or "",
+                        "published_at": data.get("publishedAt") or "",
+                        "url": data.get("url") or "",
+                    }
+            except (subprocess.TimeoutExpired, OSError, json.JSONDecodeError):
+                pass
+        # 兜底：GitHub API（私有仓库用 gh 令牌鉴权）
+        token = ""
+        if shutil.which("gh"):
+            try:
+                t = _gh(["auth", "token"])
+                if t.returncode == 0:
+                    token = t.stdout.strip()
+            except (subprocess.TimeoutExpired, OSError):
+                pass
+        data = _api_latest(repo, token)
+        if data:
             return {
                 "tag": data.get("tag_name") or "",
                 "notes": data.get("body") or "",
                 "published_at": data.get("published_at") or "",
                 "url": data.get("html_url") or "",
             }
-    except (urllib.error.URLError, OSError, ValueError, json.JSONDecodeError):
-        return None
+    return None
 
 
 def check_update(current: str, repo: str) -> dict:

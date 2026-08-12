@@ -122,3 +122,41 @@ def test_settings_update_repo_roundtrip(client):
     r = client.put("/api/settings", json={"update_repo": "other/repo"})
     assert r.status_code == 200
     assert client.get("/api/settings").json()["update_repo"] == "other/repo"
+
+
+def test_gh_view_called_without_latest_keyword(monkeypatch):
+    calls = []
+
+    def fake_gh(args, **kw):
+        calls.append(args)
+        return _gh_result(1, {})
+    monkeypatch.setattr(update, "_gh", fake_gh)
+    monkeypatch.setattr(update.shutil, "which", lambda name: "gh")
+    monkeypatch.setattr(update, "_api_latest", lambda repo, token="": {"tag_name": "v0.4.0"})
+    r = update.latest_release("GinyvaXu/ProjectDock")
+    assert r and r["tag"] == "v0.4.0"
+    assert calls and calls[0][:2] == ["release", "view"]
+    assert "latest" not in calls[0]
+
+
+def test_api_fallback_with_gh_token(monkeypatch):
+    calls = []
+
+    def fake_gh(args, **kw):
+        calls.append(args)
+        if args[:2] == ["auth", "token"]:
+            return _gh_result(0, "ghp_faketoken")
+        return _gh_result(1, {})
+    monkeypatch.setattr(update, "_gh", fake_gh)
+    monkeypatch.setattr(update.shutil, "which", lambda name: "gh")
+    monkeypatch.setattr(update, "_api_latest", lambda repo, token="": {
+        "tag_name": "v0.5.0", "body": "b", "published_at": "2026-08-12", "html_url": "https://x"})
+    r = update.latest_release("GinyvaXu/ProjectDock")
+    assert r and r["tag"] == "v0.5.0"
+    assert calls[-1][:2] == ["auth", "token"]
+
+
+def test_latest_release_none_when_no_gh_and_no_api(monkeypatch):
+    monkeypatch.setattr(update.shutil, "which", lambda name: None)
+    monkeypatch.setattr(update, "_api_latest", lambda repo, token="": None)
+    assert update.latest_release("GinyvaXu/ProjectDock") is None
