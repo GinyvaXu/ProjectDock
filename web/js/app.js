@@ -23,6 +23,8 @@
     _iconChoice: null,
     chatRunning: false,
     view: "grid",
+    viewMode: "grid",
+    sort: "pinned",
     console: null,
     drawerSeq: 0,
   };
@@ -50,6 +52,9 @@
     S.agents = agents;
     S.projects = projects;
     S.types = types;
+    S.viewMode = (typeof localStorage !== "undefined" && localStorage.getItem("pd.view")) || "grid";
+    S.view = S.viewMode;
+    S.sort = (typeof localStorage !== "undefined" && localStorage.getItem("pd.sort")) || "pinned";
     S.appVersion = health.version;
     $("appVersion").textContent = "v" + health.version;
     checkUpdateSilent();
@@ -59,6 +64,7 @@
     renderSidebar();
     renderGrid();
     bindEvents();
+    updateViewButtons();
   }
 
   function applyTheme(theme) {
@@ -93,7 +99,16 @@
     if (q) {
       list = list.filter((p) => (p.name + " " + p.title + " " + p.description + " " + p.type).toLowerCase().indexOf(q) >= 0);
     }
-    return list.slice().sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
+    const sort = S.sort || "pinned";
+    const byName = (a, b) => String(a.title || "").localeCompare(String(b.title || ""), "zh-Hans-CN");
+    return list.slice().sort((a, b) => {
+      if (sort === "pinned") return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || byName(a, b);
+      if (sort === "name") return byName(a, b);
+      if (sort === "type") return String(a.type || "").localeCompare(String(b.type || ""), "zh-Hans-CN") || byName(a, b);
+      if (sort === "updated") return String(b.updated_at || "").localeCompare(String(a.updated_at || ""));
+      if (sort === "created") return String(b.created_at || "").localeCompare(String(a.created_at || ""));
+      return 0;
+    });
   }
 
   function cardHTML(p) {
@@ -116,6 +131,27 @@
     "</div>";
   }
 
+  function rowHTML(p) {
+    return "<div class='proj-row" + (p.pinned ? " pinned-row" : "") + "' data-id='" + esc(p.id) + "' style='opacity:0'>" +
+      "<button class='pin-btn" + (p.pinned ? " on" : "") + "' data-pin='" + esc(p.id) + "' title='" + (p.pinned ? "取消置顶" : "置顶") + "'>📌</button>" +
+      "<span class='row-logo type-" + esc(p.type) + "'>" + logoHTML(p) + "</span>" +
+      "<div class='row-main'>" +
+        "<div class='row-top'>" +
+          "<span class='row-title'>" + esc(p.title) + "</span>" +
+          "<span class='badge " + esc(p.type) + "'>" + esc(p.type) + "</span>" +
+          (p.compliant ? "" : "<span class='badge badge-warn' title='未达标项目管理规范'>⚠ 未合规</span>") +
+          (p.version ? "<span class='row-version'>v" + esc(p.version) + "</span>" : "") +
+        "</div>" +
+        "<div class='row-desc'>" + esc(p.description || "（暂无描述）") + "</div>" +
+      "</div>" +
+      "<div class='row-meta'>" +
+        "<span class='row-path'>" + esc(p.id) + "</span>" +
+        (p.has_git ? "<span class='git-ok'>git ✓</span>" : "<span class='git-no'>git</span>") +
+        (p.updated_at ? "<span class='row-updated'>更新 " + esc((p.updated_at || "").replace("T", " ").slice(0, 10)) + "</span>" : "") +
+      "</div>" +
+    "</div>";
+  }
+
   function renderGrid() {
     const list = filtered();
     const grid = $("grid");
@@ -131,16 +167,37 @@
     grid.innerHTML = "";
     if (!list.length) return;
     const frag = document.createDocumentFragment();
-    list.forEach((p, i) => {
-      const el = document.createElement("div");
-      el.innerHTML = cardHTML(p);
-      const card = el.firstElementChild;
-      card.addEventListener("click", (ev) => { if (ev.target.closest(".pin-btn")) return; openDrawer(p.id); });
-      const pinBtn = card.querySelector(".pin-btn");
-      if (pinBtn) pinBtn.addEventListener("click", (ev) => { ev.stopPropagation(); togglePin(p.id, pinBtn); });
-      frag.appendChild(card);
-      Spring.enter(card, { delay: Math.min(i * 40, 320), distance: 22 });
-    });
+    const listMode = S.view === "list";
+    grid.classList.toggle("list-mode", listMode);
+    const pinned = list.filter((p) => p.pinned);
+    const rest = list.filter((p) => !p.pinned);
+    let idx = 0;
+    const addSection = (label, items) => {
+      if (!items.length) return;
+      if (label) {
+        const lab = document.createElement("div");
+        lab.className = "section-label";
+        lab.innerHTML = "<span>" + esc(label) + "</span><span class='section-count'>" + items.length + "</span>";
+        frag.appendChild(lab);
+      }
+      items.forEach((p) => {
+        const el = document.createElement("div");
+        el.innerHTML = listMode ? rowHTML(p) : cardHTML(p);
+        const card = el.firstElementChild;
+        card.addEventListener("click", (ev) => { if (ev.target.closest(".pin-btn")) return; openDrawer(p.id); });
+        const pinBtn = card.querySelector(".pin-btn");
+        if (pinBtn) pinBtn.addEventListener("click", (ev) => { ev.stopPropagation(); togglePin(p.id, pinBtn); });
+        frag.appendChild(card);
+        Spring.enter(card, { delay: Math.min(idx * 40, 320), distance: 22 });
+        idx += 1;
+      });
+    };
+    if (S.sort === "pinned") {
+      addSection("📌 置顶", pinned);
+      addSection("全部项目", rest);
+    } else {
+      addSection("", list);
+    }
     grid.appendChild(frag);
   }
 
@@ -149,7 +206,7 @@
     document.querySelectorAll(".nav-item").forEach((el) => {
       el.classList.toggle("active", el.dataset.filter === type);
     });
-    if (S.view !== "grid") showGrid();
+    if (S.view === "console") showGrid();
     renderGrid();
   }
 
@@ -505,12 +562,19 @@
 
   function fixReadmeImages(md, owner, repo, branch) {
     const base = "https://raw.githubusercontent.com/" + owner + "/" + repo + "/" + branch + "/";
-    return String(md || "").replace(/!\[([^\]]*)\]\(([^)]+)\)/g, function (m, alt, url) {
+    let out = String(md || "").replace(/!\[([^\]]*)\]\(([^)]+)\)/g, function (m, alt, url) {
       const u = String(url).trim();
       if (/^(https?:|data:)/.test(u)) return m;
       const safe = u.replace(/["'<>]/g, "").replace(/^\.\//, "");
       return "![" + alt + "](" + base + safe + ")";
     });
+    out = out.replace(/<img\b[^>]*\bsrc=["']([^"'#]+)["'][^>]*>/gi, function (m, url) {
+      const u = String(url).trim();
+      if (/^(https?:|data:|blob:)/.test(u)) return m;
+      const safe = u.replace(/["'<>]/g, "").replace(/^\.\//, "");
+      return m.split(url).join(base + safe);
+    });
+    return out;
   }
 
   async function renderGithub() {
@@ -606,19 +670,22 @@
       } catch (err) { toast(err.message, "err"); }
     });
     const readmeBtn = $("btnGhReadme");
-    if (readmeBtn) readmeBtn.addEventListener("click", () => loadGhReadme(pid));
+    if (readmeBtn) {
+      const branch = (data.repo && data.repo.default_branch) || "main";
+      readmeBtn.addEventListener("click", () => loadGhReadme(pid, branch));
+    }
     const relBtn = $("btnGhReleases");
     if (relBtn) relBtn.addEventListener("click", () => loadGhReleases(pid));
   }
 
-  async function loadGhReadme(pid) {
+  async function loadGhReadme(pid, branch) {
     const box = $("ghReadmeBox");
     if (!box) return;
     box.innerHTML = "<div class='gh-loading'>加载 README…</div>";
     try {
       const r = await api("/api/projects/" + encodeURIComponent(pid) + "/github/readme");
-      const branch = "main";
-      const text = fixReadmeImages(r.text, r.owner, r.repo, branch);
+      const br = branch || r.branch || "main";
+      const text = fixReadmeImages(r.text, r.owner, r.repo, br);
       if (!text.trim()) { box.innerHTML = "<div class='gh-loading'>远程仓库没有 README</div>"; return; }
       box.innerHTML = mdToHtml(text);
     } catch (err) {
@@ -703,34 +770,157 @@
     } catch (err) { toast(err.message, "err"); }
   }
 
-  /* ============ AI 聊天：快捷指令 ============ */
-  const PRESETS_SOFT = [
-    "帮我初始化 Git 并提交当前代码",
-    "整理版本归档到 versions/ 目录",
-    "更新 CHANGELOG 并递增版本号",
-    "检查项目合规性并一键修复",
-    "构建 Debug 版本",
-    "审查代码并修复 Bug",
-    "补充单元测试",
-    "更新 README 文档",
-    "推送代码到 GitHub 远程仓库",
-    "发布新版本",
-  ];
-  const PRESETS_OTHER = [
-    "整理项目文件结构",
-    "按文件类型归类文档",
-    "生成项目文档索引",
-    "检查并补全项目信息",
-    "整理 versions/backups 备份",
-  ];
+  /* ============ AI 聊天：分类快捷指令 ============ */
+  const PRESET_GROUPS = {
+    "软件": [
+      { icon: "🗂", label: "Git 与版本", items: [
+        "帮我初始化 Git 并提交当前代码",
+        "查看 Git 状态并汇报工作区概况",
+        "整理版本归档到 versions/ 目录",
+        "把当前版本构建产物归档并递增版本号",
+      ]},
+      { icon: "🔨", label: "构建与发布", items: [
+        "构建 Debug 版本",
+        "构建 Release 安装包（Setup）",
+        "发布新版本（构建 + 归档 + GitHub Release）",
+        "推送代码到 GitHub 远程仓库",
+      ]},
+      { icon: "📝", label: "文档", items: [
+        "更新 CHANGELOG 并递增版本号",
+        "更新 README 文档",
+        "检查并补全项目文档（计划书/设计/需求）",
+      ]},
+      { icon: "🧪", label: "质量", items: [
+        "审查代码并修复 Bug",
+        "补充单元测试并全部跑通",
+        "检查项目合规性并一键修复",
+      ]},
+      { icon: "🤖", label: "AI 协作", items: [
+        "梳理项目当前状态并给出下一步计划",
+        "分析项目文件夹结构并给出优化建议",
+        "把本次开发过程写成 AI 操作日志",
+      ]},
+    ],
+    "网站": [
+      { icon: "🗂", label: "Git 与版本", items: [
+        "帮我初始化 Git 并提交当前代码",
+        "整理版本归档到 versions/ 目录",
+        "推送代码到 GitHub 远程仓库",
+      ]},
+      { icon: "🔨", label: "前端构建", items: [
+        "构建前端产物并检查输出",
+        "构建并本地预览网站",
+        "检查页面资源与打包配置",
+      ]},
+      { icon: "📝", label: "文档", items: [
+        "更新 README 文档",
+        "检查并补全网站说明文档",
+      ]},
+      { icon: "🤖", label: "AI 协作", items: [
+        "梳理网站结构与当前进度",
+        "分析页面结构并给出改进建议",
+      ]},
+    ],
+    "游戏": [
+      { icon: "🗂", label: "Git 与版本", items: [
+        "帮我初始化 Git 并提交当前代码",
+        "整理版本归档到 versions/ 目录",
+        "推送代码到 GitHub 远程仓库",
+      ]},
+      { icon: "🔨", label: "资源与构建", items: [
+        "构建当前游戏版本",
+        "整理游戏资源素材",
+        "检查并归档构建产物",
+      ]},
+      { icon: "📝", label: "文档", items: [
+        "更新 README 与游戏说明",
+        "整理玩法/设计文档",
+      ]},
+      { icon: "🤖", label: "AI 协作", items: [
+        "梳理游戏开发进度",
+        "分析关卡/数值并给出建议",
+      ]},
+    ],
+    "脚本": [
+      { icon: "🗂", label: "Git 与版本", items: [
+        "帮我初始化 Git 并提交当前代码",
+        "整理版本归档到 versions/ 目录",
+        "推送代码到 GitHub 远程仓库",
+      ]},
+      { icon: "🔨", label: "运行与测试", items: [
+        "运行脚本并检查输出",
+        "补充参数校验与错误处理",
+        "为脚本补充测试用例",
+      ]},
+      { icon: "📝", label: "文档", items: [
+        "更新 README 与用法说明",
+        "检查并补全脚本注释",
+      ]},
+      { icon: "🤖", label: "AI 协作", items: [
+        "分析脚本逻辑并优化",
+        "梳理脚本使用场景与依赖",
+      ]},
+    ],
+    "PPT": [
+      { icon: "🗂", label: "内容整理", items: [
+        "整理演示文稿大纲",
+        "按主题归类幻灯片素材",
+        "检查幻灯片文字密度与排版",
+      ]},
+      { icon: "📦", label: "版本归档", items: [
+        "归档各版本演示文稿到 versions/",
+        "整理相关素材与参考资料",
+      ]},
+      { icon: "🤖", label: "AI 协作", items: [
+        "梳理演示文稿结构与进度",
+        "给出单页内容修改建议",
+      ]},
+    ],
+    "文稿": [
+      { icon: "🗂", label: "内容整理", items: [
+        "按文件类型归类文档",
+        "整理各版本文稿并排序",
+        "生成文档目录索引",
+      ]},
+      { icon: "📦", label: "版本归档", items: [
+        "归档各版本文稿到 versions/",
+        "整理 backups 备份",
+      ]},
+      { icon: "🤖", label: "AI 协作", items: [
+        "梳理文稿写作进度",
+        "检查并补全文稿元信息",
+      ]},
+    ],
+    "其他": [
+      { icon: "🗂", label: "整理", items: [
+        "整理项目文件结构",
+        "按文件类型归类文件",
+        "生成项目文件索引",
+      ]},
+      { icon: "📦", label: "版本归档", items: [
+        "整理 versions/ 归档",
+        "整理 backups 备份",
+      ]},
+      { icon: "🤖", label: "AI 协作", items: [
+        "梳理项目当前状态",
+        "检查并补全项目信息",
+        "给出文件组织优化建议",
+      ]},
+    ],
+  };
   function renderChatPresets() {
     const wrap = $("chatPresets");
     if (!wrap) return;
     const type = S.current ? S.current.type : "";
-    const soft = ["软件", "网站", "游戏", "脚本"].indexOf(type) >= 0;
-    const list = soft ? PRESETS_SOFT : PRESETS_OTHER;
-    wrap.innerHTML = "<span class='preset-head'>快捷指令</span>" +
-      list.map((t) => "<button class='preset-chip' data-prompt='" + esc(t) + "'>" + esc(t) + "</button>").join("");
+    const groups = PRESET_GROUPS[type] || PRESET_GROUPS["其他"];
+    wrap.innerHTML = groups.map((g, gi) =>
+      "<details class='preset-group'" + (gi === 0 ? " open" : "") + ">" +
+        "<summary><span class='pg-ico'>" + esc(g.icon || "·") + "</span><span class='pg-label'>" + esc(g.label) + "</span>" +
+        "<span class='pg-count'>" + g.items.length + "</span><span class='pg-caret'>▾</span></summary>" +
+        "<div class='preset-chips'>" +
+          g.items.map((t) => "<button class='preset-chip' data-prompt='" + esc(t) + "'>" + esc(t) + "</button>").join("") +
+        "</div></details>"
+    ).join("");
     wrap.querySelectorAll(".preset-chip").forEach((b) => {
       b.addEventListener("click", () => {
         const input = $("chatInput");
@@ -896,12 +1086,27 @@
   }
 
   function showGrid() {
-    S.view = "grid";
+    S.view = S.viewMode === "list" ? "list" : "grid";
     document.querySelectorAll(".nav-item").forEach((el) => el.classList.remove("active"));
     document.querySelectorAll(".nav-item[data-filter]").forEach((el) => el.classList.toggle("active", el.dataset.filter === S.filter));
     $("console").hidden = true;
     $("grid").hidden = false;
+    updateViewButtons();
     renderGrid();
+  }
+
+  function setView(mode) {
+    S.viewMode = mode;
+    S.view = mode;
+    if (typeof localStorage !== "undefined") localStorage.setItem("pd.view", mode);
+    updateViewButtons();
+    renderGrid();
+  }
+
+  function updateViewButtons() {
+    document.querySelectorAll(".seg-btn").forEach((b) => {
+      b.classList.toggle("active", b.dataset.view === S.view);
+    });
   }
 
   async function renderConsole() {
@@ -1361,6 +1566,15 @@ async function runBuild(script) {
     s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
     s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
     s = s.replace(/~~([^~]+)~~/g, "<del>$1</del>");
+    s = s.replace(/\[!\[([^\]]*)\]\(([^)]+)\)\]\(([^)]+)\)/g, function (m, alt, img, url) {
+      const iu = String(img).replace(/["'<>]/g, "");
+      const lu = String(url).replace(/["'<>]/g, "");
+      return "<a href='" + lu + "' target='_blank' rel='noopener'><img class='md-img' src='" + iu + "' alt='" + esc(alt) + "' loading='lazy'></a>";
+    });
+    s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, function (m, alt, url) {
+      const u = String(url).replace(/["'<>]/g, "");
+      return "<img class='md-img' src='" + u + "' alt='" + esc(alt) + "' loading='lazy'>";
+    });
     s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, function (m, txt, url) {
       const safe = String(url).replace(/["'<>]/g, "");
       return "<a href='" + safe + "' target='_blank' rel='noopener'>" + txt + "</a>";
@@ -1368,39 +1582,134 @@ async function runBuild(script) {
     return s;
   }
 
+  /* README 内嵌 HTML 白名单过滤（防 XSS，仅保留安全标签/属性） */
+  function sanitizeHtml(raw) {
+    const ALLOW_TAGS = new Set(["a","b","blockquote","br","code","del","details","div","em","h1","h2","h3","h4","h5","h6","hr","i","img","li","ol","p","pre","s","span","strong","sub","summary","sup","table","tbody","td","th","thead","tr","ul"]);
+    const ALLOW_ATTRS = new Set(["href","src","alt","title","align","width","height","colspan","rowspan","target","rel","loading"]);
+    const doc = new DOMParser().parseFromString(String(raw || ""), "text/html");
+    const clean = (node) => {
+      if (node.nodeType === 3) return node.nodeValue || "";
+      if (node.nodeType !== 1) return "";
+      const tag = node.tagName.toLowerCase();
+      if (!ALLOW_TAGS.has(tag)) {
+        let inner = "";
+        [...node.childNodes].forEach((c) => { inner += clean(c); });
+        return inner;
+      }
+      let attrs = "";
+      [...node.attributes].forEach((a) => {
+        const name = a.name.toLowerCase();
+        if (!ALLOW_ATTRS.has(name)) return;
+        const val = a.value.trim();
+        if ((name === "href" || name === "src") && /^\s*(javascript:|vbscript:|data:text\/html)/i.test(val)) return;
+        if (name === "href" && !/^(https?:|mailto:|#|\/)/i.test(val)) return;
+        attrs += " " + name + '="' + esc(val) + '"';
+      });
+      let inner = "";
+      [...node.childNodes].forEach((c) => { inner += clean(c); });
+      return "<" + tag + attrs + ">" + inner + "</" + tag + ">";
+    };
+    return clean(doc.body);
+  }
+
   function mdToHtml(src) {
     const lines = String(src || "").split("\n");
     let html = "";
     let inCode = false, codeBuf = [];
+    let listBuf = [], listType = null;
+    let tableBuf = [], inTable = false;
+    let quoteBuf = [];
+    let htmlBuf = null;
     const flushCode = () => {
       if (codeBuf.length) html += "<pre><code>" + esc(codeBuf.join("\n")) + "</code></pre>";
       codeBuf = [];
     };
+    const flushList = () => {
+      if (!listBuf.length) return;
+      const tag = listType === "ol" ? "ol" : "ul";
+      html += "<" + tag + ">" + listBuf.join("") + "</" + tag + ">";
+      listBuf = []; listType = null;
+    };
+    const flushTable = () => {
+      if (!tableBuf.length) return;
+      const rows = tableBuf;
+      tableBuf = [];
+      const head = rows[0].map((c) => "<th>" + inlineMd(c) + "</th>").join("");
+      let body = "";
+      rows.slice(2).forEach((r) => { body += "<tr>" + r.map((c) => "<td>" + inlineMd(c) + "</td>").join("") + "</tr>"; });
+      html += "<div class='md-table-wrap'><table><thead><tr>" + head + "</tr></thead>" +
+        (body ? "<tbody>" + body + "</tbody>" : "") + "</table></div>";
+    };
+    const flushQuote = () => {
+      if (!quoteBuf.length) return;
+      html += "<blockquote>" + quoteBuf.join("<br>") + "</blockquote>";
+      quoteBuf = [];
+    };
+    const flushAll = () => {
+      flushCode(); flushList(); flushTable(); flushQuote();
+      if (htmlBuf) { html += sanitizeHtml(htmlBuf.buf.join("\n")); htmlBuf = null; }
+    };
+    const isTableLine = (l) => (String(l).match(/\|/g) || []).length >= 2;
+    const isTableSep = (l) => /^\s*\|?[\s:|-]+\|?\s*$/.test(l) && l.indexOf("-") >= 0;
+    const splitRow = (l) => String(l).trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
     lines.forEach((line) => {
       const fence = line.match(/^```(\w*)\s*$/);
       if (fence) {
         if (inCode) { inCode = false; flushCode(); }
-        else { flushCode(); inCode = true; }
+        else { flushAll(); inCode = true; }
         return;
       }
       if (inCode) { codeBuf.push(line); return; }
+      if (!line.trim()) { flushAll(); return; }
       const h = line.match(/^(#{1,6})\s+(.*)$/);
-      if (h) { html += "<h" + h[1].length + ">" + inlineMd(h[2]) + "</h" + h[1].length + ">"; return; }
-      if (/^(-{3,}|\*{3,}|_{3,})$/.test(line.trim())) { html += "<hr>"; return; }
-      const img = line.match(/^\s*!\[([^\]]*)\]\(([^)]+)\)\s*$/);
-      if (img) {
-        const u = String(img[2]).replace(/["'<>]/g, "");
-        html += "<img class='md-img' src='" + u + "' alt='" + esc(img[1]) + "' loading='lazy'>";
+      if (h) { flushAll(); html += "<h" + h[1].length + ">" + inlineMd(h[2]) + "</h" + h[1].length + ">"; return; }
+      if (/^(-{3,}|\*{3,}|_{3,})$/.test(line.trim())) { flushAll(); html += "<hr>"; return; }
+      if (isTableLine(line)) {
+        if (inTable && isTableSep(line)) return;
+        if (inTable) { tableBuf.push(splitRow(line)); return; }
+        flushAll();
+        inTable = true;
+        tableBuf.push(splitRow(line));
+        return;
+      }
+      if (inTable) { flushTable(); inTable = false; }
+      if (htmlBuf) {
+        htmlBuf.buf.push(line);
+        if (htmlBuf.buf.join(" ").indexOf("</" + htmlBuf.tag + ">") >= 0) {
+          html += sanitizeHtml(htmlBuf.buf.join("\n"));
+          htmlBuf = null;
+        }
+        return;
+      }
+      const open = line.match(/^\s*<([a-zA-Z][a-zA-Z0-9-]*)(\s[^>]*)?>\s*$/);
+      if (open) {
+        flushAll();
+        if (line.indexOf("</" + open[1] + ">") >= 0 || /\/\s*>$/.test(line)) {
+          html += sanitizeHtml(line);
+        } else {
+          htmlBuf = { tag: open[1], buf: [line] };
+        }
         return;
       }
       const li = line.match(/^\s*([-*+])\s+(.*)$/);
-      if (li) { html += "<li>" + inlineMd(li[2]) + "</li>"; return; }
+      if (li) {
+        if (listType !== "ul") { flushList(); listType = "ul"; }
+        listBuf.push("<li>" + inlineMd(li[2]) + "</li>");
+        return;
+      }
       const ol = line.match(/^\s*\d+[.)]\s+(.*)$/);
-      if (ol) { html += "<li class='md-ol'>" + inlineMd(ol[1]) + "</li>"; return; }
-      if (!line.trim()) return;
+      if (ol) {
+        if (listType !== "ol") { flushList(); listType = "ol"; }
+        listBuf.push("<li>" + inlineMd(ol[1]) + "</li>");
+        return;
+      }
+      if (listType) flushList();
+      const q = line.match(/^\s*>\s?(.*)$/);
+      if (q) { quoteBuf.push(inlineMd(q[1])); return; }
+      if (quoteBuf.length) flushQuote();
       html += "<p>" + inlineMd(line) + "</p>";
     });
-    if (inCode) flushCode();
+    flushAll();
     return html;
   }
 
@@ -1830,6 +2139,20 @@ async function runBuild(script) {
     $("btnCheckUpdate").addEventListener("click", checkUpdate);
     $("btnDownloadUpdate").addEventListener("click", downloadAndInstall);
     $("searchInput").addEventListener("input", (e) => { S.search = e.target.value; renderGrid(); });
+    const viewSeg = $("viewSeg");
+    if (viewSeg) viewSeg.addEventListener("click", (e) => {
+      const b = e.target.closest(".seg-btn");
+      if (b) setView(b.dataset.view);
+    });
+    const sortSel = $("sortSelect");
+    if (sortSel) {
+      sortSel.value = S.sort;
+      sortSel.addEventListener("change", (e) => {
+        S.sort = e.target.value;
+        if (typeof localStorage !== "undefined") localStorage.setItem("pd.sort", S.sort);
+        renderGrid();
+      });
+    }
     $("btnDrawerClose").addEventListener("click", closeDrawer);
     $("btnOpenFolder").addEventListener("click", () => handleOverviewAction("open"));
     $("btnCopyPath").addEventListener("click", () => handleOverviewAction("copy"));

@@ -32,7 +32,9 @@ cap_*
 # 日志
 logs/
 
-# �����ʱ���
+# 覆盖率报告
 .coverage
 htmlcov/
 
+# 图标设计候选（本地保留，不入库）
+assets/icon_concepts/

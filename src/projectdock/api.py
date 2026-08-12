@@ -600,10 +600,15 @@ def create_app(state: AppState) -> FastAPI:
         if not token:
             raise HTTPException(status_code=400, detail="未登录 GitHub，请先在设置中登录")
         try:
+            try:
+                info = ghrepo.repo_info(token, slug[0], slug[1])
+                branch = str(info.get("default_branch") or "main")
+            except ghrepo.GhError:
+                branch = "main"
             text = ghrepo.repo_readme(token, slug[0], slug[1])
         except ghrepo.GhError as exc:
             raise HTTPException(status_code=404, detail=str(exc))
-        return {"text": text, "owner": slug[0], "repo": slug[1]}
+        return {"text": text, "owner": slug[0], "repo": slug[1], "branch": branch}
 
     @api.get("/projects/{pid}/github/commits")
     def project_github_commits(pid: str, limit: int = 10) -> dict:

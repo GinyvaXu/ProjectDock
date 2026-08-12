@@ -90,11 +90,13 @@ def test_github_readme_requires_login(client, monkeypatch):
 def test_github_readme_returns_text(client, monkeypatch):
     monkeypatch.setattr(ghrepo, "resolve_token", lambda settings: "tok")
     monkeypatch.setattr(ghrepo, "repo_slug", lambda p: ("owner", "repo"))
+    monkeypatch.setattr(ghrepo, "repo_info", lambda token, o, r: {"default_branch": "main"})
     monkeypatch.setattr(ghrepo, "repo_readme", lambda token, o, r: "# Hello\n\nBody")
     created = _create_soft(client, "readme2")
     r = client.get(f"/api/projects/{created['id']}/github/readme")
     assert r.status_code == 200
     assert "Body" in r.json()["text"]
+    assert r.json()["branch"] == "main"
 
 
 def test_github_create_and_set_remote(client, monkeypatch):
