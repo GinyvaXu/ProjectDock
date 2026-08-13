@@ -22,6 +22,10 @@
     logoRev: 0,
     _iconChoice: null,
     chatRunning: false,
+    _chatRunning: {},
+    chatSessions: {},
+    consoleChatProject: null,
+    consoleChatFull: false,
     view: "grid",
     viewMode: "grid",
     sort: "pinned",
@@ -232,6 +236,7 @@
     renderOverview(proj);
     showDrawer();
     renderChatPresets();
+    renderChat(S.current.id, "chatMsgs");
     loadVersionsData();
   }
 
@@ -1162,8 +1167,22 @@
       html += "<div id='batchLog'></div>";
       html += "</div>";
 
+      html += "<div class='c-card c-chat" + (S.consoleChatFull ? " chat-full" : "") + "'><div class='ver-head'><h4>AI 助手对话</h4>" +
+        "<span class='spacer'></span>" +
+        "<select id='consoleAgentProject' class='console-proj-sel' title='切换对话项目'>" +
+          data.projects.map((pj) => "<option value='" + esc(pj.id) + "'" + (S.consoleChatProject === pj.id ? " selected" : "") + ">" + esc(pj.title) + "</option>").join("") +
+        "</select>" +
+        "<select id='consoleAgentSelect' class='console-agent-sel' title='AI 后端'></select>" +
+        "<button class='btn btn-sm' id='btnConsoleChatFull' title='对话窗口全屏/还原'>" + (S.consoleChatFull ? "⤢ 还原" : "⤢ 全屏") + "</button>" +
+        "<button class='btn btn-sm' id='btnConsoleChatClear' title='清空该项目的对话记录'>清空</button></div>" +
+        "<div class='console-chat'><div class='chat-msgs' id='consoleChatMsgs'></div>" +
+        "<div class='chat-input'><input id='consoleChatInput' placeholder='向该项目的 AI 助手下达指令…' autocomplete='off'>" +
+        "<button class='btn btn-primary' id='consoleChatSend'>发送</button></div></div>" +
+        "</div>";
+
       html += "</div>";
       box.innerHTML = html;
+      document.querySelector(".app").classList.toggle("chat-focus", !!S.consoleChatFull);
       const ref = $("btnConsoleRefresh");
       if (ref) ref.addEventListener("click", renderConsole);
       box.querySelectorAll(".proj-row").forEach((row) => {
@@ -1174,9 +1193,61 @@
       });
       const batch = $("btnBatchRun");
       if (batch) batch.addEventListener("click", runBatch);
+      // 总控台 AI 助手对话
+      const projSel = $("consoleAgentProject");
+      const agentSel = $("consoleAgentSelect");
+      if (agentSel) {
+        S.agents.forEach((a) => {
+          const o = document.createElement("option");
+          o.value = a.name; o.textContent = a.label;
+          if (a.name === S.settings.agent) o.selected = true;
+          agentSel.appendChild(o);
+        });
+      }
+      if (projSel) {
+        const first = projSel.value || (projSel.options.length ? projSel.options[0].value : null);
+        if (S.consoleChatProject && projSel.querySelector('[value="' + CSS.escape(S.consoleChatProject) + '"]')) projSel.value = S.consoleChatProject;
+        else if (first) S.consoleChatProject = first;
+        projSel.addEventListener("change", (e) => {
+          S.consoleChatProject = e.target.value;
+          renderChat(S.consoleChatProject, "consoleChatMsgs");
+        });
+      }
+      if (S.consoleChatProject) renderChat(S.consoleChatProject, "consoleChatMsgs");
+      const chatSend = $("consoleChatSend");
+      if (chatSend) chatSend.addEventListener("click", () => sendChatFor("consoleChatMsgs", S.consoleChatProject, "consoleAgentSelect"));
+      const chatInput = $("consoleChatInput");
+      if (chatInput) chatInput.addEventListener("keydown", (e) => { if (e.key === "Enter") sendChatFor("consoleChatMsgs", S.consoleChatProject, "consoleAgentSelect"); });
+      const fullBtn = $("btnConsoleChatFull");
+      if (fullBtn) fullBtn.addEventListener("click", () => {
+        S.consoleChatFull = !S.consoleChatFull;
+        document.querySelector(".app").classList.toggle("chat-focus", S.consoleChatFull);
+        fullBtn.textContent = S.consoleChatFull ? "⤢ 还原" : "⤢ 全屏";
+      });
+      const clearBtn = $("btnConsoleChatClear");
+      if (clearBtn) clearBtn.addEventListener("click", () => {
+        if (!S.consoleChatProject) return;
+        S.chatSessions[S.consoleChatProject] = { msgs: [], history: [] };
+        renderChat(S.consoleChatProject, "consoleChatMsgs");
+        toast("已清空该项目对话记录");
+      });
     } catch (err) {
       box.innerHTML = "<div class='build-log'>加载失败：" + esc(err.message) + "</div>";
     }
+  }
+
+  function appendBatchJob(log, pid, projMap, init) {
+    const wrap = document.createElement("div");
+    wrap.className = "batch-job";
+    wrap.innerHTML =
+      "<div class='batch-job-head'><span class='git-dot " + (init.status === "error" ? "dirty" : "run") + "'></span>" +
+      "<span class='batch-job-title'>" + esc(projMap[pid] || pid) + "</span>" +
+      "<span class='spacer'></span><span class='batch-job-status " + (init.status === "error" ? "err" : init.status === "done" ? "ok" : "") + "'>" + (init.status === "error" ? "启动失败" : "运行中") + "</span></div>" +
+      "<div class='batch-job-statusline'></div>" +
+      "<details class='batch-job-outwrap'><summary>输出</summary><pre class='batch-job-out'></pre></details>";
+    if (init.error) wrap.querySelector(".batch-job-statusline").textContent = init.error;
+    log.appendChild(wrap);
+    return wrap;
   }
 
   async function runBatch() {
@@ -1186,12 +1257,45 @@
     if (!prompt) { toast("请输入指令", "err"); return; }
     const log = $("batchLog");
     if (!log) return;
+    const projMap = {};
+    S.projects.forEach((p) => { projMap[p.id] = p.title; });
     log.innerHTML = "<div class='build-status'>正在启动 " + ids.length + " 个任务…</div>";
     try {
       const res = await api("/api/agent/batch", { method: "POST", body: { project_ids: ids, prompt: prompt } });
-      log.innerHTML = "<div class='build-status ok'>已启动 " + res.jobs.length + " 个任务（失败 " + res.jobs.filter((j) => j.error).length + "），可到各项目「AI 日志」查看</div>";
-      toast("批量任务已启动");
-      setTimeout(() => renderConsole(), 3000);
+      log.innerHTML = "";
+      const states = {};
+      res.jobs.forEach((j) => {
+        if (j.error) {
+          states[j.project_id] = "error";
+          appendBatchJob(log, j.project_id, projMap, { status: "error", error: j.error });
+          return;
+        }
+        states[j.project_id] = "running";
+        const el = appendBatchJob(log, j.project_id, projMap, { status: "running" });
+        const outBox = el.querySelector(".batch-job-out");
+        const stLine = el.querySelector(".batch-job-statusline");
+        streamEvents("/api/jobs/" + j.job_id + "/stream", (data) => {
+          if (data.type === "status") { stLine.textContent = data.text; }
+          else if (data.type === "line") {
+            if (outBox) {
+              outBox.textContent = outBox.textContent ? outBox.textContent + "\n" + data.text : data.text;
+              outBox.scrollTop = outBox.scrollHeight;
+            }
+          }
+          if (data.type === "end") {
+            const head = el.querySelector(".batch-job-status");
+            if (data.status === "done") { head.textContent = "完成"; head.className = "batch-job-status ok"; }
+            else { head.textContent = "失败"; head.className = "batch-job-status err"; }
+            stLine.textContent = data.error || "";
+            states[j.project_id] = data.status;
+          }
+        }, () => {
+          const head = el.querySelector(".batch-job-status");
+          if (states[j.project_id] === "running") { head.textContent = "已结束"; head.className = "batch-job-status"; }
+        });
+      });
+      toast("批量任务已启动，实时进度见下方");
+      setTimeout(() => renderConsole(), 5000);
     } catch (err) {
       log.innerHTML = "<div class='build-status err'>失败：" + esc(err.message) + "</div>";
     }
@@ -1615,14 +1719,23 @@ async function runBuild(script) {
   function mdToHtml(src) {
     const lines = String(src || "").split("\n");
     let html = "";
-    let inCode = false, codeBuf = [];
+    let inCode = false, codeBuf = [], codeLang = "";
+    let pdChoice = null;
     let listBuf = [], listType = null;
     let tableBuf = [], inTable = false;
     let quoteBuf = [];
     let htmlBuf = null;
     const flushCode = () => {
-      if (codeBuf.length) html += "<pre><code>" + esc(codeBuf.join("\n")) + "</code></pre>";
+      if (codeLang === "pdchoice") {
+        try {
+          const obj = JSON.parse(codeBuf.join("\n"));
+          if (obj && typeof obj.question === "string" && Array.isArray(obj.options) && obj.options.length) pdChoice = obj;
+        } catch (e) { pdChoice = null; }
+      } else if (codeBuf.length) {
+        html += "<pre><code>" + esc(codeBuf.join("\n")) + "</code></pre>";
+      }
       codeBuf = [];
+      codeLang = "";
     };
     const flushList = () => {
       if (!listBuf.length) return;
@@ -1656,7 +1769,7 @@ async function runBuild(script) {
       const fence = line.match(/^```(\w*)\s*$/);
       if (fence) {
         if (inCode) { inCode = false; flushCode(); }
-        else { flushAll(); inCode = true; }
+        else { flushAll(); inCode = true; codeLang = fence[1] || ""; }
         return;
       }
       if (inCode) { codeBuf.push(line); return; }
@@ -1710,11 +1823,19 @@ async function runBuild(script) {
       html += "<p>" + inlineMd(line) + "</p>";
     });
     flushAll();
+    if (pdChoice) {
+      html += "<div class='choice-card'><div class='choice-q'>" + esc(pdChoice.question || "请选择") + "</div>" +
+        "<div class='choice-opts'>" +
+        pdChoice.options.map(function (o, i) {
+          return "<button class='choice-btn' data-opt='" + i + "'>" + esc(o) + "</button>";
+        }).join("") +
+        "</div></div>";
+    }
     return html;
   }
 
-  function appendChatMessage(kind, text) {
-    const wrap = $("chatMsgs");
+  function appendChatMessage(kind, text, wrapId) {
+    const wrap = $(wrapId || "chatMsgs");
     const el = document.createElement("div");
     if (kind === "user") {
       el.className = "msg user";
@@ -1730,6 +1851,39 @@ async function runBuild(script) {
     wrap.appendChild(el);
     wrap.scrollTop = wrap.scrollHeight;
     return el;
+  }
+
+  /* 会话状态：每个项目独立的对话记录（msgs=展示，history=给 agent 的上下文） */
+  function chatSession(pid) {
+    if (!S.chatSessions[pid]) S.chatSessions[pid] = { msgs: [], history: [] };
+    return S.chatSessions[pid];
+  }
+
+  function sessionHistory(pid) {
+    return chatSession(pid).history.slice(-12);
+  }
+
+  function chatContextFor(wrapId) {
+    if (wrapId === "chatMsgs") return { projectId: S.current ? S.current.id : null, agentSel: "agentSelect" };
+    if (wrapId === "consoleChatMsgs") return { projectId: S.consoleChatProject, agentSel: "consoleAgentSelect" };
+    return { projectId: null, agentSel: "agentSelect" };
+  }
+
+  function renderChat(pid, wrapId) {
+    const wrap = $(wrapId);
+    if (!wrap || !pid) return;
+    const s = chatSession(pid);
+    wrap.innerHTML = "";
+    if (!s.msgs.length) {
+      const hint = document.createElement("div");
+      hint.className = "chat-hint";
+      hint.textContent = "用自然语言向 AI 项目助手下达要求。任务将在当前项目目录中执行，输出实时回显；当 agent 需要你决策时，回复中会出现可点击的选项卡片。";
+      wrap.appendChild(hint);
+    }
+    s.msgs.forEach((m) => {
+      const el = appendChatMessage(m.kind, m.text, wrapId);
+      if (m.kind === "ai") setAIText(el, m.text);
+    });
   }
 
   function agentLabel(name) {
@@ -1752,31 +1906,100 @@ async function runBuild(script) {
     el.dataset.raw = text;
     const md = el.querySelector(".md");
     if (md) md.innerHTML = mdToHtml(text);
+    bindChoices(el, text);
     const btn = el.querySelector(".msg-copy");
     if (btn) btn.onclick = () => {
       navigator.clipboard.writeText(text).then(() => toast("已复制回复"), () => toast("复制失败", "err"));
     };
   }
 
+  /* 解析回复中的 pdchoice 选择卡片并绑定选项点击 */
+  function parseChoices(text) {
+    const blocks = [];
+    const re = /```pdchoice\s*\n([\s\S]*?)\s*```/g;
+    let m;
+    while ((m = re.exec(String(text || ""))) !== null) {
+      try {
+        const obj = JSON.parse(m[1]);
+        if (obj && typeof obj.question === "string" && Array.isArray(obj.options) && obj.options.length) {
+          blocks.push(obj);
+        }
+      } catch (e) { /* ignore malformed */ }
+    }
+    return blocks;
+  }
+
+  function bindChoices(el, text) {
+    const blocks = parseChoices(text);
+    if (!blocks.length) return;
+    const wrap = el.closest(".chat-msgs");
+    const wrapId = wrap ? wrap.id : "chatMsgs";
+    const ctx = chatContextFor(wrapId);
+    const cards = el.querySelectorAll(".choice-card");
+    blocks.forEach((block, bi) => {
+      const card = cards[bi];
+      if (!card || card.dataset.bound === "1") return;
+      card.dataset.bound = "1";
+      card.querySelectorAll(".choice-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          if (S._chatRunning[wrapId]) { toast("当前任务运行中，请等待完成", "err"); return; }
+          if (!ctx.projectId) { toast("未选择项目", "err"); return; }
+          const idx = parseInt(btn.dataset.opt, 10);
+          const label = block.options[idx];
+          card.classList.add("answered");
+          card.querySelectorAll(".choice-btn").forEach((b) => { b.disabled = true; });
+          btn.classList.add("chosen");
+          const selText = "【选择】" + (block.question || "") + "\n我选择：" + (label || "");
+          runPrompt(wrapId, ctx.projectId, ctx.agentSel, selText);
+        });
+      });
+    });
+  }
+
   async function sendChat() {
-    if (S.chatRunning || !S.current) return;
-    const input = $("chatInput");
+    await sendChatFor("chatMsgs", S.current ? S.current.id : null, "agentSelect");
+  }
+
+  /* 通用发送：从输入框取词并交给 runPrompt */
+  async function sendChatFor(wrapId, projectId, agentSelId) {
+    if (!projectId) { toast("未选择项目", "err"); return; }
+    const inputId = wrapId.replace("Msgs", "Input");
+    const input = $(inputId);
+    if (!input) return;
     const prompt = input.value.trim();
     if (!prompt) return;
     input.value = "";
-    appendChatMessage("user", prompt);
-    const agent = $("agentSelect").value;
-    const aiEl = appendChatMessage("ai", "");
+    await runPrompt(wrapId, projectId, agentSelId, prompt);
+  }
+
+  /* 通用执行：追加用户消息 -> 携带会话历史调用 agent -> 流式回显 -> 存档 */
+  async function runPrompt(wrapId, projectId, agentSelId, prompt) {
+    if (S._chatRunning[wrapId] || !projectId || !prompt) return;
+    const sendId = wrapId.replace("Msgs", "Send");
+    const inputId = wrapId.replace("Msgs", "Input");
+    const session = chatSession(projectId);
+    const prior = sessionHistory(projectId);
+    session.msgs.push({ kind: "user", text: prompt });
+    session.history.push({ role: "user", text: prompt });
+    appendChatMessage("user", prompt, wrapId);
+    const agent = $(agentSelId || "agentSelect").value;
+    const aiEl = appendChatMessage("ai", "", wrapId);
     aiEl.classList.add("running");
     setAIStatus(aiEl, "正在连接 " + agentLabel(agent) + " …");
-    S.chatRunning = true;
-    $("chatSend").disabled = true;
-    $("chatInput").disabled = true;
+    S._chatRunning[wrapId] = true;
+    const sb = $(sendId), ib = $(inputId);
+    if (sb) sb.disabled = true;
+    if (ib) ib.disabled = true;
     let raw = "";
+    const finish = () => {
+      S._chatRunning[wrapId] = false;
+      if (sb) sb.disabled = false;
+      if (ib) ib.disabled = false;
+    };
     try {
       const res = await api("/api/agent/run", {
         method: "POST",
-        body: { project_id: S.current.id, prompt: prompt, agent: agent },
+        body: { project_id: projectId, prompt: prompt, agent: agent, history: prior },
       });
       streamEvents("/api/jobs/" + res.job_id + "/stream", (data) => {
         if (data.type === "status") {
@@ -1787,31 +2010,31 @@ async function runBuild(script) {
           raw = raw ? raw + "\n" + data.text : data.text;
           setAIText(aiEl, raw);
           aiEl.classList.remove("running");
-          $("chatMsgs").scrollTop = $("chatMsgs").scrollHeight;
+          const w = $(wrapId);
+          if (w) w.scrollTop = w.scrollHeight;
         }
         if (data.type === "end") {
           aiEl.classList.remove("running");
           setAIStatus(aiEl, "");
-          if (!raw && data.error) setAIText(aiEl, "（任务失败：" + data.error + "）");
-          S.chatRunning = false;
-          $("chatSend").disabled = false;
-          $("chatInput").disabled = false;
+          if (!raw && data.error) { raw = "（任务失败：" + data.error + "）"; setAIText(aiEl, raw); }
+          else if (!raw) { raw = "（任务已结束，无输出）"; setAIText(aiEl, raw); }
+          session.msgs.push({ kind: "ai", text: raw });
+          session.history.push({ role: "assistant", text: raw });
+          finish();
         }
       }, () => {
-        if (!raw) setAIText(aiEl, "（任务已结束，无输出）");
         aiEl.classList.remove("running");
         setAIStatus(aiEl, "");
-        S.chatRunning = false;
-        $("chatSend").disabled = false;
-        $("chatInput").disabled = false;
+        if (!raw) { raw = "（任务已结束，无输出）"; setAIText(aiEl, raw); }
+        session.msgs.push({ kind: "ai", text: raw });
+        session.history.push({ role: "assistant", text: raw });
+        finish();
       });
     } catch (err) {
       setAIText(aiEl, "（启动失败：" + err.message + "）");
       aiEl.classList.remove("running");
       setAIStatus(aiEl, "");
-      S.chatRunning = false;
-      $("chatSend").disabled = false;
-      $("chatInput").disabled = false;
+      finish();
     }
   }
 
@@ -2154,6 +2377,12 @@ async function runBuild(script) {
       });
     }
     $("btnDrawerClose").addEventListener("click", closeDrawer);
+    const fullBtn = $("btnDrawerFull");
+    if (fullBtn) fullBtn.addEventListener("click", () => {
+      const drawer = $("drawer");
+      drawer.classList.toggle("full");
+      fullBtn.textContent = drawer.classList.contains("full") ? "⛶" : "⤢";
+    });
     $("btnOpenFolder").addEventListener("click", () => handleOverviewAction("open"));
     $("btnCopyPath").addEventListener("click", () => handleOverviewAction("copy"));
     $("backdrop").addEventListener("click", closeDrawer);

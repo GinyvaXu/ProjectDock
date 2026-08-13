@@ -751,3 +751,68 @@ input, select, textarea { font-family: inherit; font-size: 14px; color: var(--te
 .ai-entry .ai-src { font-size: 11px; color: var(--text-3); }
 .ai-entry .ai-detail > div { white-space: pre-wrap; }
 .console-act { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+
+/* ============ v1.3.0：抽屉全屏 / 总控台对话 / 选择卡片 / 批量实时进度 ============ */
+.drawer.full { width: 100vw; max-width: 100vw; }
+
+/* 总控台 AI 助手对话 */
+.c-card.c-chat { grid-column: 1 / -1; }
+.console-chat { display: flex; flex-direction: column; height: 380px; min-height: 260px; }
+.console-chat .chat-msgs { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 4px 2px 10px; }
+.console-chat .chat-input { display: flex; gap: 8px; padding-top: 10px; border-top: 1px solid var(--border); flex-shrink: 0; }
+.console-chat .chat-input input {
+  flex: 1; min-width: 0; height: 36px; padding: 0 12px; font-size: 13.5px;
+  background: var(--bg-soft); border: 1px solid var(--border); border-radius: 10px; color: var(--text);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.console-chat .chat-input input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(10,132,255,.18); }
+.console-proj-sel, .console-agent-sel { max-width: 220px; height: 30px; font-size: 12.5px; }
+
+/* 全屏对话（软件内） */
+.app.chat-focus .sidebar { display: none; }
+.app.chat-focus .main .toolbar { display: none; }
+.app.chat-focus .console { overflow: hidden; padding: 0; }
+.app.chat-focus .console-head,
+.app.chat-focus .console .c-card:not(.c-chat) { display: none; }
+.app.chat-focus .console-grid { display: block; height: 100%; }
+.app.chat-focus .c-chat {
+  position: absolute; inset: 0; margin: 0; border-radius: 0; border: none; box-shadow: none;
+  display: flex; flex-direction: column; background: var(--bg);
+}
+.app.chat-focus .c-chat .console-chat { flex: 1; min-height: 0; height: auto; }
+
+/* agent 选择卡片（grill） */
+.choice-card {
+  margin-top: 12px; border: 1px solid var(--border); border-radius: 14px;
+  background: var(--card); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;
+}
+.choice-q { font-size: 13.5px; font-weight: 650; color: var(--text); }
+.choice-opts { display: flex; flex-direction: column; gap: 6px; }
+.choice-btn {
+  text-align: left; font-size: 12.5px; line-height: 1.4; color: var(--text-2);
+  background: var(--bg-soft); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px;
+  cursor: pointer; transition: background .15s ease, color .15s ease, border-color .15s ease, transform .12s cubic-bezier(.34,1.56,.64,1);
+  -webkit-user-select: none; user-select: none;
+}
+.choice-btn:hover { background: var(--card-hover); color: var(--text); border-color: var(--accent); }
+.choice-btn:active { transform: scale(.97); }
+.choice-btn.chosen { background: color-mix(in srgb, var(--accent, #0a84ff) 16%, transparent); border-color: var(--accent); color: var(--accent-strong, #0a84ff); font-weight: 650; }
+.choice-card.answered .choice-btn { cursor: default; opacity: .72; }
+.choice-card.answered .choice-btn:hover { background: var(--bg-soft); border-color: var(--border); transform: none; }
+
+/* 批量实时进度 */
+.batch-job { margin-top: 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); overflow: hidden; }
+.batch-job-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; font-size: 12.5px; }
+.batch-job-title { font-weight: 650; color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.batch-job-status { font-size: 11px; font-weight: 650; color: var(--text-3); background: var(--bg-soft); border-radius: 999px; padding: 2px 9px; flex-shrink: 0; }
+.batch-job-status.ok { color: var(--ok, #30d158); background: color-mix(in srgb, #30d158 12%, transparent); }
+.batch-job-status.err { color: var(--err, #ff453a); background: color-mix(in srgb, #ff453a 12%, transparent); }
+.batch-job-statusline { font-size: 11.5px; color: var(--text-2); padding: 0 12px 8px; }
+.batch-job-outwrap { border-top: 1px dashed var(--border); }
+.batch-job-outwrap summary { font-size: 11.5px; color: var(--text-3); padding: 6px 12px; cursor: pointer; -webkit-user-select: none; user-select: none; }
+.batch-job-out {
+  max-height: 180px; overflow-y: auto; margin: 0; padding: 8px 12px 10px;
+  font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; line-height: 1.55;
+  color: var(--text-2); white-space: pre-wrap; word-break: break-all; background: var(--bg-soft);
+}

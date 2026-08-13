@@ -730,7 +730,9 @@ def create_app(state: AppState) -> FastAPI:
         proj = _resolve_project(payload.project_id)
         agent = payload.agent if payload.agent in AGENT_NAMES else state.settings.agent
         spec = _type_spec(proj.get("type", "其他"))
-        context = agent_mod.system_prompt(proj["name"], proj["path"], spec, state.settings.confirm_policy)
+        context = agent_mod.system_prompt(proj["name"], proj["path"], spec,
+                                          state.settings.confirm_policy,
+                                          history=getattr(payload, "history", None))
         task = payload.prompt + "\n\n请直接在当前项目目录执行上述任务并完成实际文件/代码/版本操作（不要只做介绍或说明）；完成后用中文简短报告你做了什么。"
         job = state.jobs.start_task(
             f"AI · {AGENTS[agent]['label']}",

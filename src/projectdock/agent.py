@@ -54,8 +54,22 @@ POLICY_LABELS = {
 }
 
 
+def render_history(history: list[dict] | None, max_turns: int = 12, max_chars: int = 1500) -> str:
+    """把会话历史渲染成给 agent 的「前情提要」文本（防上下文爆炸）。"""
+    if not history:
+        return ""
+    turns = [h for h in history if isinstance(h, dict) and h.get("text")]
+    lines = ["## 对话历史（前情提要，最近的交互，按顺序发生）"]
+    for h in turns[-max_turns:]:
+        role = "用户" if h.get("role") == "user" else "助手"
+        text = str(h.get("text") or "")[:max_chars]
+        lines.append(f"- [{role}] {text}")
+    lines.append("（以上是此前对话；用户可能参考其中的问题与答复，继续完成当前任务。）")
+    return "\n".join(lines)
+
+
 def system_prompt(project_name: str, project_path: str, type_info: dict | None = None,
-                  confirm_policy: dict | None = None) -> str:
+                  confirm_policy: dict | None = None, history: list[dict] | None = None) -> str:
     """给 agent 的项目上下文前缀；含类型结构约定与确认策略（与管理端约定一致）。"""
     lines = [
         "你是 ProjectDock 项目坞内置的项目管理助手。",
@@ -68,6 +82,14 @@ def system_prompt(project_name: str, project_path: str, type_info: dict | None =
             lines.append("确认策略：以下操作必须先向用户确认并获得明确同意才能执行——" + "、".join(need) + "。")
         else:
             lines.append("确认策略：所有高危操作均允许自动执行（用户已在设置中关闭确认）。")
+    lines.append("")
+    lines.append("## 需要用户决策时（grill 交互）")
+    lines.append("当任务需要用户拍板（多方案选择 / 高风险操作确认 / 关键信息缺失）时，"
+                 "停止执行并把选择交给用户：在回复末尾输出一个选择卡片（JSON，选项 2-5 个、每个选项一句话），"
+                 "然后停下来等待用户选择，不要自行决定继续执行。选择卡片格式：")
+    lines.append('```pdchoice')
+    lines.append('{"question": "需要用户决定的问题", "options": ["选项一", "选项二", "选项三"]}')
+    lines.append('```')
     lines.append("")
     lines.append("## 常见任务解读（先想清楚用户要什么，再动手）")
     lines.append("- 「整理版本归档 / 归档构建产物 / 把产物归到版本里」= 把根目录 dist/、installer/、build/ 里的构建产物移动归档到 versions/vX.Y.Z/dist/（VERSION 文件里的当前版本号对应的目录；没有就先建），并报告移动了哪些文件。")
@@ -85,6 +107,10 @@ def system_prompt(project_name: str, project_path: str, type_info: dict | None =
         lines.append(f"项目类型：{type_info.get('label') or type_info.get('name')}。")
         if structure:
             lines.append("；".join(structure) + "。请遵循这些结构约定进行管理。")
+    hist = render_history(history)
+    if hist:
+        lines.append("")
+        lines.append(hist)
     try:
         ctx = contract.dynamic_context(project_path)
         if ctx:

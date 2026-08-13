@@ -104,6 +104,7 @@ def main() -> None:
         "--paths", str(ROOT / "src"),
         "--collect-all", "uvicorn",
         "--collect-all", "fastapi",
+        "--icon", str(ROOT / "assets" / "icon.ico"),
         "--hidden-import", "pydantic",
         str(ENTRY),
     ]

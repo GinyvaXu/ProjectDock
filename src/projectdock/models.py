@@ -32,6 +32,7 @@ class AgentRun(BaseModel):
     project_id: str
     prompt: str = Field(min_length=1)
     agent: str | None = None  # None 时回落全局设置（默认 pi）
+    history: list[dict] = []  # 会话历史 [{role: user|assistant, text}]，供 agent 延续上下文
 
 
 class AgentBatch(BaseModel):

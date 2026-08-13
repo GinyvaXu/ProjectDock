@@ -80,6 +80,28 @@ def test_agent_run_endpoint(client, state, monkeypatch):
     assert "AI" in captured["label"]
 
 
+def test_agent_run_with_history(client, state, monkeypatch):
+    client.post("/api/projects", json={"name": "AI历史", "type": "软件"})
+    captured = {}
+
+    def fake_start_task(label, coro_factory):
+        captured["factory"] = coro_factory
+        return Job(id="fakejob", label=label)
+
+    monkeypatch.setattr(state.jobs, "start_task", fake_start_task)
+    resp = client.post("/api/agent/run", json={
+        "project_id": "项目1-软件-AI历史",
+        "prompt": "继续整理归档",
+        "agent": "pi",
+        "history": [
+            {"role": "user", "text": "帮我整理版本归档"},
+            {"role": "assistant", "text": "好的，已归档到 versions/v1.2.0/dist/。"},
+        ],
+    })
+    assert resp.status_code == 200
+    assert captured["factory"]
+
+
 def test_settings_root_update(client, tmp_path):
     new_root = tmp_path / "newlib"
     new_root.mkdir()

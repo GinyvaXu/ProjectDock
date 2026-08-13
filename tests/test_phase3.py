@@ -71,6 +71,20 @@ def test_agent_prompt_injects_policy():
     assert "确认策略" not in none
 
 
+def test_system_prompt_history_and_pdchoice():
+    hist = [
+        {"role": "user", "text": "整理版本归档"},
+        {"role": "assistant", "text": "已归档到 versions/v1.2.0/dist/。"},
+    ]
+    prompt = agent_mod.system_prompt("项目1-软件-甲", "C:/x", None, None, history=hist)
+    assert "对话历史" in prompt
+    assert "整理版本归档" in prompt
+    assert "pdchoice" in prompt  # grill 选择卡片提示
+    # 无历史时不应出现历史章节
+    prompt2 = agent_mod.system_prompt("项目1-软件-乙", "C:/y")
+    assert "对话历史" not in prompt2
+
+
 def test_cli_init_builtin(cli_env):
     cli.main(["--root", str(cli_env["root"]), "init", "新项目甲", "--type", "软件", "--no-git"])
     proj = cli_env["root"] / "项目1-软件-新项目甲"
