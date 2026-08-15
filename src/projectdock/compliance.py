@@ -25,6 +25,7 @@ _REQUIRED = {
         {"key": "readme", "label": "README.md 项目说明", "kind": "file", "name": "README.md"},
         {"key": "version", "label": "VERSION 文件（版本号唯一来源）", "kind": "file", "name": "VERSION"},
         {"key": "changelog", "label": "CHANGELOG.md 更新日志", "kind": "file", "name": "CHANGELOG.md"},
+        {"key": "techstack", "label": "TECHSTACK.md 技术栈文档", "kind": "file", "name": "TECHSTACK.md"},
         {"key": "gitignore", "label": ".gitignore 忽略规则", "kind": "file", "name": ".gitignore"},
         {"key": "git", "label": "Git 仓库", "kind": "git"},
     ],
@@ -199,6 +200,7 @@ def _fix_action_for(item: dict) -> dict | None:
         "version": ("create_version", "创建 VERSION", "写入版本号 0.1.0（可后续修改）"),
         "changelog": ("create_changelog", "创建 CHANGELOG.md", "生成标准更新日志模板"),
         "gitignore": ("create_gitignore", "创建 .gitignore", "生成标准忽略规则"),
+        "techstack": ("create_techstack", "创建 TECHSTACK.md", "按标准模板生成技术栈文档（概览 + 核心功能实现）"),
         "versions": ("create_versions", "创建 versions/ 目录", "建立版本归档目录"),
         "git": ("git_init", "初始化 Git 仓库", "git init + 首次提交"),
     }
@@ -232,6 +234,10 @@ def _execute_fix(project_path: Path, ptype: str, title: str, description: str,
     if key == "create_version":
         _write(project_path / "VERSION", "0.1.0\n")
         return {"ok": True, "message": "已创建 VERSION（0.1.0）"}
+    if key == "create_techstack":
+        from .techstack import ensure_template
+        ensure_template(project_path, title or project_path.name)
+        return {"ok": True, "message": "已创建 TECHSTACK.md"}
     if key == "create_changelog":
         _write(project_path / "CHANGELOG.md", presets.CHANGELOG_TEMPLATE)
         return {"ok": True, "message": "已创建 CHANGELOG.md"}
@@ -370,3 +376,4 @@ def archive_root_dist(project_path: Path, version: str | None = None) -> dict:
 def _write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
+

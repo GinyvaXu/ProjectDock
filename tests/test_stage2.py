@@ -48,7 +48,7 @@ def test_scan_documents_empty(tmp_path):
 
 def test_tabs_for_type_defaults_and_override():
     software = presets.tabs_for_type("软件")
-    assert software == ["overview", "github", "versions", "compliance", "ai", "ailog"]
+    assert software == ["overview", "techstack", "github", "versions", "compliance", "ai", "ailog"]
     assert "docs" not in software
     doc = presets.tabs_for_type("文稿")
     assert doc == ["overview", "docs", "ai", "ailog"]
@@ -58,7 +58,7 @@ def test_tabs_for_type_defaults_and_override():
     # 自定义覆盖：去掉 compliance，乱序 + 非法 key 被过滤（已含 overview 则不重排）
     override = {"软件": ["ai", "overview", "bogus", "versions"]}
     tabs = presets.tabs_for_type("软件", override)
-    assert tabs == ["ai", "overview", "github", "versions", "ailog"]
+    assert tabs == ["ai", "overview", "techstack", "github", "versions", "ailog"]
     # overview / ailog 始终保留
     assert presets.tabs_for_type("文稿", {"文稿": ["ai"]}) == ["overview", "ai", "ailog"]
 
@@ -155,7 +155,7 @@ def test_settings_type_tabs_roundtrip(client):
     assert saved["type_tabs"]["软件"] == ["overview", "ai", "ailog"]
     types = client.get("/api/types").json()
     software = next(t for t in types if t["name"] == "软件")
-    assert software["tabs"] == ["overview", "github", "ai", "ailog"]
+    assert software["tabs"] == ["overview", "techstack", "github", "ai", "ailog"]
     doc = next(t for t in types if t["name"] == "文稿")
     assert doc["tabs"] == ["overview", "docs", "ai", "ailog"]
 

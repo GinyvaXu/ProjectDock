@@ -17,14 +17,15 @@ from fastapi.staticfiles import StaticFiles
 
 from . import agent as agent_mod
 from . import iconmaker
-from . import ailog, backup, builder, compliance, console, contract, ghrepo, github, presets, release, scanner, update, versioning
+from . import ailog, backup, builder, compliance, console, contract, ghrepo, github, presets, release, scanner, techstack, update, versioning
 from .agent import AGENTS
 from .config import APP_NAME, APP_VERSION
 from .db import delete_custom_type, delete_project, get_custom_type, get_project, list_custom_types, list_projects, set_pinned, upsert_custom_type, upsert_project
 from .models import (AGENT_NAMES, PROJECT_TYPES, THEMES, AILogCreate, AgentBatch, AgentRun,
                      BackupRestore, BuildRun, ComplianceFix, CustomTypeCreate, GithubAuthPayload,
                      GithubCreatePayload, GithubSetRemotePayload, IconPayload, OpenPath, OpenUrl,
-                     ProjectCreate, ProjectImport, ProjectInit, ProjectUpdate, ReleaseRun, SettingsUpdate, UpdateInstall)
+                     ProjectCreate, ProjectImport, ProjectInit, ProjectUpdate, ReleaseRun, SettingsUpdate,
+                     TechstackPayload, UpdateInstall)
 from .state import AppState
 
 def _locate_web_dir() -> Path:
@@ -647,6 +648,22 @@ def create_app(state: AppState) -> FastAPI:
         if not result.get("ok"):
             raise HTTPException(status_code=400, detail=result.get("message", "创建失败"))
         return result
+
+    @api.get("/projects/{pid}/techstack")
+    def project_techstack(pid: str) -> dict:
+        proj = _resolve_project(pid)
+        return techstack.read_techstack(Path(proj["path"]))
+
+    @api.put("/projects/{pid}/techstack")
+    def project_techstack_save(pid: str, payload: TechstackPayload) -> dict:
+        proj = _resolve_project(pid)
+        return techstack.write_techstack(Path(proj["path"]), payload.content)
+
+    @api.post("/projects/{pid}/techstack/template")
+    def project_techstack_template(pid: str) -> dict:
+        proj = _resolve_project(pid)
+        title = scanner.parse_project_dir(pid)[2] if scanner.parse_project_dir(pid) else proj["name"]
+        return techstack.ensure_template(Path(proj["path"]), title)
 
     @api.post("/projects/{pid}/github/set-remote")
     def project_github_set_remote(pid: str, payload: GithubSetRemotePayload) -> dict:

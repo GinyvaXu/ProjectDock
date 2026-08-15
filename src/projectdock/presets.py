@@ -5,6 +5,8 @@ import re
 import subprocess
 from pathlib import Path
 
+from .techstack import TEMPLATE as TECHSTACK_TEMPLATE
+
 GITIGNORE_SOFTWARE = """# Python 缓存
 __pycache__/
 *.pyc
@@ -150,11 +152,12 @@ TAB_LABELS = {
     "ai": "AI 管理",
     "ailog": "AI 日志",
     "github": "GitHub 仓库",
+    "techstack": "技术栈",
 }
 
 # 各类型的默认菜单模板（可在设置中覆盖）
 DEFAULT_TABS = {
-    "软件": ["overview", "github", "versions", "compliance", "ai", "ailog"],
+    "软件": ["overview", "techstack", "github", "versions", "compliance", "ai", "ailog"],
     "网站": ["overview", "github", "versions", "compliance", "ai", "ailog"],
     "游戏": ["overview", "github", "versions", "compliance", "ai", "ailog"],
     "脚本": ["overview", "github", "versions", "compliance", "ai", "ailog"],
@@ -167,7 +170,7 @@ ALL_TAB_KEYS = tuple(TAB_LABELS)
 
 
 # 新版本新增的默认 Tab（仅自动并入这些，尊重用户对其它 Tab 的删除）
-NEW_TABS = ("github",)
+NEW_TABS = ("github", "techstack")
 
 
 def tabs_for_type(ptype: str, override: dict | None = None) -> list[str]:
@@ -202,6 +205,7 @@ PRESETS: dict[str, dict] = {
             "README.md": README_SOFTWARE,
             "VERSION": "0.1.0\n",
             "CHANGELOG.md": CHANGELOG_TEMPLATE,
+            "TECHSTACK.md": TECHSTACK_TEMPLATE,
             "requirements.txt": "# 依赖\n",
             ".gitignore": GITIGNORE_SOFTWARE,
             "AGENTS.md": AGENTS_SOFTWARE,

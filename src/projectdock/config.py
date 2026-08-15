@@ -6,7 +6,7 @@ import shutil
 from pathlib import Path
 
 APP_NAME = "ProjectDock"
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.3.1"
 
 
 def _gh_logged_in() -> bool:

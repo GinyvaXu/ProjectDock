@@ -91,6 +91,13 @@ def system_prompt(project_name: str, project_path: str, type_info: dict | None =
     lines.append('{"question": "需要用户决定的问题", "options": ["选项一", "选项二", "选项三"]}')
     lines.append('```')
     lines.append("")
+    lines.append("## 技术栈文档（TECHSTACK.md）")
+    lines.append("用户要求「写/补/更新技术栈」时：先通读源码、README、依赖清单与 CHANGELOG，"
+                 "在项目根目录维护 TECHSTACK.md。格式：`## 概览` 表格（语言/运行时、主要框架、数据存储、"
+                 "前端、构建与打包、测试等维度）+ `## 核心功能实现`（每个关键功能一个 `### 小节`，"
+                 "含 `- **实现逻辑**：` 与 `- **技术手段**：` 两条要点）。要求详细但简明清晰，"
+                 "先讲功能做什么、再讲用什么技术为什么；只写真实存在的内容。")
+    lines.append("")
     lines.append("## 常见任务解读（先想清楚用户要什么，再动手）")
     lines.append("- 「整理版本归档 / 归档构建产物 / 把产物归到版本里」= 把根目录 dist/、installer/、build/ 里的构建产物移动归档到 versions/vX.Y.Z/dist/（VERSION 文件里的当前版本号对应的目录；没有就先建），并报告移动了哪些文件。")
     lines.append("- 「整理版本」但没提 CHANGELOG：不要主动改 CHANGELOG.md，先做上面的归档，最后报告并询问是否需要补更新日志。")

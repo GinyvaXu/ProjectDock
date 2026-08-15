@@ -54,6 +54,10 @@ class CustomTypeCreate(BaseModel):
     git: bool = True
 
 
+class TechstackPayload(BaseModel):
+    content: str = Field(max_length=200000)
+
+
 class OpenPath(BaseModel):
     path: str = Field(min_length=1)
 

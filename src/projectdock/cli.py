@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
-from . import ailog, builder, compliance, contract, presets, release, scanner
+from . import ailog, builder, compliance, contract, presets, release, scanner, techstack
 from .config import Settings, default_root
 from .runner import stream_command
 from .versioning import VERSION_RE, read_version
@@ -231,6 +231,28 @@ def cmd_archive(args) -> None:
         sys.exit(1)
 
 
+def cmd_techstack(args) -> None:
+    """查看或初始化 TECHSTACK.md（技术栈文档）。"""
+    project = _resolve_project(args.root, args.name)
+    ptype = _project_type(project)
+    if ptype != "软件" and not args.force:
+        sys.exit("该命令主要面向软件项目；如需强制操作请加 --force")
+    title = project.name
+    parsed = scanner.parse_project_dir(project.name)
+    if parsed:
+        title = parsed[2]
+    if args.init:
+        data = techstack.ensure_template(project, title)
+        sys.stdout.write(f"[techstack] 已就绪：{data['path']}\n")
+        sys.stdout.write(data["content"])
+        return
+    data = techstack.read_techstack(project)
+    if not data["exists"]:
+        sys.stdout.write(f"[techstack] 项目尚无 TECHSTACK.md，用 --init 创建模板。\n")
+        return
+    sys.stdout.write(data["content"])
+
+
 def main(argv: list[str] | None = None) -> int:
     if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
         try:
@@ -301,6 +323,12 @@ def main(argv: list[str] | None = None) -> int:
     p_archive.add_argument("--agent", default="cli")
     p_archive.add_argument("--confirm", action="store_true", help="确认移动产物（确认策略要求时必填）")
     p_archive.set_defaults(func=cmd_archive)
+
+    p_techstack = sub.add_parser("techstack", help="查看/初始化 TECHSTACK.md 技术栈文档")
+    p_techstack.add_argument("name")
+    p_techstack.add_argument("--init", action="store_true", help="缺失时创建模板")
+    p_techstack.add_argument("--force", action="store_true", help="允许非软件项目")
+    p_techstack.set_defaults(func=cmd_techstack)
 
     args = parser.parse_args(argv)
     try:

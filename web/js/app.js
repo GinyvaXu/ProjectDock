@@ -297,6 +297,7 @@
     if (tab === "docs") renderDocs();
     if (tab === "ailog") renderAILog();
     if (tab === "github") renderGithub();
+    if (tab === "techstack") renderTechstack();
     if (tab === "ai") renderChatPresets();
   }
 
@@ -793,6 +794,7 @@
       { icon: "📝", label: "文档", items: [
         "更新 CHANGELOG 并递增版本号",
         "更新 README 文档",
+        "撰写/更新 TECHSTACK.md 技术栈文档（通读源码归纳核心功能）",
         "检查并补全项目文档（计划书/设计/需求）",
       ]},
       { icon: "🧪", label: "质量", items: [
@@ -2038,6 +2040,83 @@ async function runBuild(script) {
     }
   }
 
+  const TECHSTACK_PROMPT = "请分析当前项目（通读源码、README、CHANGELOG、依赖清单、构建配置等），在项目根目录撰写/更新 TECHSTACK.md 技术栈文档。格式：## 概览 表格（维度|内容：语言/运行时、主要框架、数据存储、前端、构建与打包、测试等）+ ## 核心功能实现（每个关键功能一个 ### 小节，含 **实现逻辑** 与 **技术手段** 两条要点）。要求详细但简明清晰、只写真实存在的内容；不要改动其他文件。完成后报告你分析了哪些文件、归纳了哪些功能。";
+
+  async function renderTechstack() {
+    if (!S.current) return;
+    const seq = S.drawerSeq;
+    const pid = S.current.id;
+    const panel = $("panel-techstack");
+    if (!panel) return;
+    panel.innerHTML = "<div class='build-log'>加载技术栈…</div>";
+    try {
+      const data = await api("/api/projects/" + encodeURIComponent(pid) + "/techstack");
+      if (seq !== S.drawerSeq || !S.current || S.current.id !== pid) return;
+      let html = "<div class='ver-head'><h4>技术栈 · " + esc(S.current.title) + "</h4>" +
+        "<span class='spacer'></span>" +
+        "<button class='btn btn-sm' id='btnTsAi'>🤖 AI 撰写</button>" +
+        "<button class='btn btn-sm' id='btnTsEdit'>" + (data.exists ? "编辑" : "填写") + "</button>" +
+        "<button class='btn btn-sm' id='btnTsRefresh'>刷新</button></div>";
+      if (!data.exists) {
+        html += "<div class='ts-empty'>该项目还没有技术栈文档。<br>点击「🤖 AI 撰写」让 agent 分析项目自动填写，或点「填写」手动编写。</div>";
+      } else {
+        if (data.overview && data.overview.length) {
+          html += "<div class='ts-overview'>" + data.overview.map((o) =>
+            "<div class='ts-chip'><span class='ts-chip-label'>" + esc(o.label) + "</span><span class='ts-chip-value'>" + esc(o.value) + "</span></div>"
+          ).join("") + "</div>";
+        }
+        if (data.features && data.features.length) {
+          html += "<div class='ts-features'>" + data.features.map((f, i) =>
+            "<div class='ts-card'><div class='ts-card-title'>" + (i + 1) + ". " + esc(f.title) + "</div>" +
+            (f.logic.length ? "<div class='ts-row'><span class='ts-k'>实现逻辑</span><span class='ts-v'>" + f.logic.map(esc).join("<br>") + "</span></div>" : "") +
+            (f.means.length ? "<div class='ts-row'><span class='ts-k'>技术手段</span><span class='ts-v'>" + f.means.map(esc).join("<br>") + "</span></div>" : "") +
+            "</div>"
+          ).join("") + "</div>";
+        }
+        if (!data.overview.length && !data.features.length) {
+          html += "<div class='ts-raw'>" + mdToHtml(data.content || "") + "</div>";
+        }
+        html += "<details class='ai-detail'><summary>原文（Markdown）</summary><div class='ts-raw'>" + mdToHtml(data.content || "") + "</div></details>";
+      }
+      panel.innerHTML = html;
+      const btnAi = $("btnTsAi");
+      if (btnAi) btnAi.addEventListener("click", () => {
+        if (!S.current) return;
+        showTab("ai");
+        runPrompt("chatMsgs", S.current.id, "agentSelect", TECHSTACK_PROMPT);
+      });
+      const btnEdit = $("btnTsEdit");
+      if (btnEdit) btnEdit.addEventListener("click", () => openTsEditor(panel, pid));
+      const btnRef = $("btnTsRefresh");
+      if (btnRef) btnRef.addEventListener("click", renderTechstack);
+    } catch (err) {
+      panel.innerHTML = "<div class='build-log'>加载失败：" + esc(err.message) + "</div>";
+    }
+  }
+
+  function openTsEditor(panel, pid) {
+    const path = "/api/projects/" + encodeURIComponent(pid) + "/techstack";
+    api(path).then((data) => {
+      panel.innerHTML =
+        "<div class='ver-head'><h4>编辑技术栈</h4><span class='spacer'></span>" +
+        "<button class='btn btn-sm btn-primary' id='btnTsSave'>保存</button>" +
+        "<button class='btn btn-sm' id='btnTsCancel'>取消</button></div>" +
+        "<div class='ts-editor-hint'>格式：<code>## 概览</code> 表格（维度|内容）+ <code>## 核心功能实现</code>（每个功能一个 <code>###</code> 小节，含 <b>实现逻辑</b> / <b>技术手段</b> 两条要点）。可先点「AI 撰写」自动生成。</div>" +
+        "<textarea id='tsEditor' class='ts-editor'>" + esc(data.content || "") + "</textarea>";
+      const save = $("btnTsSave");
+      if (save) save.addEventListener("click", async () => {
+        const content = $("tsEditor").value;
+        try {
+          await api(path, { method: "PUT", body: { content: content } });
+          toast("技术栈已保存");
+          renderTechstack();
+        } catch (err) { toast(err.message, "err"); }
+      });
+      const cancel = $("btnTsCancel");
+      if (cancel) cancel.addEventListener("click", renderTechstack);
+    }).catch((err) => toast(err.message, "err"));
+  }
+
   /* ============ 模态 ============ */
   function fillTypeSelects() {
     const opts = S.presets.map((p) => "<option value='" + esc(p.type) + "'>" + esc(p.label) + "</option>").join("");
@@ -2455,3 +2534,7 @@ async function runBuild(script) {
 
   init().catch((err) => toast("初始化失败：" + err.message, "err"));
 })();
+
+
+
+

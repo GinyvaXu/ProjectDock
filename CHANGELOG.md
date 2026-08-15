@@ -2,6 +2,14 @@
 
 本文件记录 ProjectDock 的版本迭代。格式：语义化版本 + 日期 + 变更分组。
 
+
+## [1.3.1] - 2026-08-15
+### Added
+技术栈文档（TECHSTACK.md）：软件项目新增「技术栈」Tab，解析项目根目录 TECHSTACK.md 的概览表格与核心功能小节（实现逻辑/技术手段）卡片展示，支持在线编辑、模板生成与「AI 撰写」一键下发
+- 新软件项目预设自动生成 TECHSTACK.md 模板；合规检查新增必需项与 create_techstack 一键修复；CLI 新增 techstack 子命令（--init/--force）
+- 内置 agent 教学：系统提示词与项目契约新增 TECHSTACK.md 撰写规范（通读源码→归纳概览+核心功能，只写真实内容）；软件类快捷指令新增「撰写/更新技术栈」
+- 已为本地 7 个真实软件项目现场撰写 TECHSTACK.md（番茄钟/浮窗工具/座位表排列/webp转pdf/AgentFloat/GinyScreen/ProjectDock）
+- 测试 160 个通过，覆盖率 83.32%（门槛 80%）
 ## [1.3.0] - 2026-08-13
 ### Fixed（修复安装包图标未生效）
 - 根因：build_setup.py 重新构建 release exe 时未传 `--icon`，Setup 安装包内的 exe 一直使用 PyInstaller 默认图标；已补全 `--icon`，安装后程序/快捷方式图标为新「版本卡片」

@@ -65,6 +65,15 @@ def _software(title: str, description: str, dirs: str, files: str, git: bool) ->
 - 只有用户明确说「发布 / 发版 / release」才走 VERSION -> CHANGELOG -> git tag -> Release 完整流程。
 - 归档用 `python -m projectdock.cli archive <项目名> [--version X.Y.Z] [--confirm]`；归档是移动不是删除，绝不覆盖旧产物。
 
+## 技术栈文档（TECHSTACK.md）
+- 软件项目根目录应维护 `TECHSTACK.md`（ProjectDock「技术栈」Tab 展示、合规必需项）。
+- 格式（详细但简明清晰）：
+  - `## 概览` 表格：语言/运行时、主要框架、数据存储、前端、构建与打包、测试等；
+  - `## 核心功能实现`：每个关键功能一个 `### 小节`，含 `- **实现逻辑**：...` 与 `- **技术手段**：...` 两条要点。
+- 何时写/更新：用户要求「写/补/更新技术栈」、每次涉及重要技术选型或新增核心功能后。
+- 撰写方法：先通读源码、README、依赖清单、CHANGELOG，再归纳核心功能；不夸大、不写未实现的内容。
+- 工具：`python -m projectdock.cli techstack <项目名>` 可生成模板或查看当前内容。
+
 ## 确认策略（强制）
 - 以下操作必须先获得**用户明确同意**才能执行：推送 GitHub（push）/ 删除文件（delete）/ 创建 GitHub 仓库（github_create）/ 发布 Release（release）/ 归档移动构建产物（archive）
 - 执行上述操作时：`projectdock-cli` 对应命令要求加 `--confirm` 参数；外部 agent 不得擅自 push / 删除 / 建仓

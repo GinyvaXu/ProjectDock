@@ -27,14 +27,14 @@ def test_empty_software_detects_missing_standard(client):
     report = check_compliance(path, "软件")
     assert report["compliant"] is False
     keys = {a["key"] for a in report["actions"]}
-    assert {"create_readme", "create_version", "create_changelog", "create_gitignore", "git_init", "mkdir_versions"} <= keys
+    assert {"create_readme", "create_version", "create_changelog", "create_techstack", "create_gitignore", "git_init", "mkdir_versions"} <= keys
     assert client.get("/api/projects").json()[0]["compliant"] is False
 
 
 def test_fix_endpoint_creates_standard_files(client):
     pid, path = _software_project(client, "修复项目")
     resp = client.post(f"/api/projects/{pid}/compliance/fix", json={
-        "actions": ["create_readme", "create_version", "create_changelog", "create_gitignore", "mkdir_versions", "git_init"],
+        "actions": ["create_readme", "create_version", "create_changelog", "create_techstack", "create_gitignore", "mkdir_versions", "git_init"],
         "confirm": False,
     })
     assert resp.status_code == 200
@@ -42,6 +42,7 @@ def test_fix_endpoint_creates_standard_files(client):
     assert (path / "README.md").is_file()
     assert (path / "VERSION").is_file()
     assert (path / "CHANGELOG.md").is_file()
+    assert (path / "TECHSTACK.md").is_file()
     assert (path / ".gitignore").is_file()
     assert (path / "versions").is_dir()
     assert check_compliance(path, "软件")["compliant"] is True
