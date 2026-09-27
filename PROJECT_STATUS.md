@@ -1,7 +1,14 @@
 # ProjectDock 项目状态
-- 版本：1.3.0（总控台 AI 对话 + grill 选择卡片 + 批量实时进度 + 全屏对话 + 安装包图标修复）
-- 状态：v1.2.0 → v1.3.0 功能迭代
+- 版本：1.4.0（命名规范风格系统 + 本机资料库本土化；为「风格一键切换」新版本功能打底）
+- 状态：v1.3.1 → v1.4.0 功能迭代（开发中，未发布构建）
 - GitHub：https://github.com/GinyvaXu/ProjectDock（私有，main 分支）
+
+## v1.4.0（2026-09-27）
+1. 命名规范风格注册表 `naming.py`：classic（项目NN-类型-名称）/ local（ProjectN-名称、ProjectN.M-名称）/ auto（自动识别，默认）
+2. 扫描/导入兼容全部风格（切换不丢项目）；新建/重命名按当前风格并保留原序号
+3. 设置 `naming_style` + `GET /api/naming/styles` + CLI `init --style`（为未来「一键切换」界面预留接口）
+4. `docs/命名规范.md`：AIAgentBase 本机命名规范总结（版本归档要求为硬性项，保留）
+5. 质量：178 测试通过 / 覆盖率 83.65%（新增 18 项 naming 用例）
 
 ## v1.3.0（2026-08-13）
 1. 修复安装包图标：build_setup.py 补 `--icon`（此前重新构建 release exe 丢失图标），安装后程序/快捷方式显示新「版本卡片」

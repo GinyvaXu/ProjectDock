@@ -3,6 +3,17 @@
 本文件记录 ProjectDock 的版本迭代。格式：语义化版本 + 日期 + 变更分组。
 
 
+## [1.4.0] - 2026-09-27
+### Added（命名规范风格系统 + 本机资料库本土化）
+- 新增命名规范风格注册表 `naming.py`：`classic`（项目NN-类型-名称）/ `local`（ProjectN-名称、ProjectN.M-名称，类型存注册表）/ `auto`（按资料库现有项目自动识别，默认）——为后续「命名规范风格一键切换」新版本功能打底
+- 扫描/导入始终兼容全部已注册风格（切换风格不丢项目）；新建/重命名按当前风格执行，重命名保留原序号（含 `Project2.1-…` 子序号）
+- 设置新增 `naming_style`（settings.json / API `PUT /api/settings` / CLI `init --style`）；新增只读接口 `GET /api/naming/styles`（风格清单 + 当前值 + 自动识别结果，供未来切换界面消费）
+- CLI：`init` 支持 `--style auto|classic|local`；无类型风格项目的 `context/status/techstack` 类型读取注册表
+- 文档：新增 `docs/命名规范.md`（AIAgentBase 本机命名规范总结 + 版本归档硬性要求 + 风格切换/扩展方法）；README/03_管理逻辑报告/AGENTS.md 同步
+- 修复：`gh auth status` / `git remote` / `gh repo create` 输出未指定编码，GBK 环境下读取报错；统一按 UTF-8 解码
+- 默认根目录探测改为兼容全部命名风格（含 `ProjectN-名称`）
+- 测试：新增 tests/test_naming.py（18 用例：解析/识别/创建/优先级/API/CLI）；全量 178 个通过，覆盖率 83.65%（门槛 80%）
+
 ## [1.3.1] - 2026-08-15
 ### Added
 - 技术栈文档（TECHSTACK.md）：软件项目新增「技术栈」Tab，解析项目根目录 TECHSTACK.md 的概览表格与核心功能小节（实现逻辑/技术手段）卡片展示，支持在线编辑、模板生成与「AI 撰写」一键下发
