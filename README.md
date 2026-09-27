@@ -91,6 +91,7 @@ python run.py --no-webview --port 8765  # 只起后端
 | `versions/backups/` | 自动备份快照 `pd_backup_*.zip` |
 | `dist` / `installer` / `build` | 根目录未归档构建（界面标记并提示一键归档） |
 | `AGENTS.md` | 项目契约，约束 AI agent 遵守管理规范 |
+| 命名规范风格 | 项目文件夹命名可插拔（`classic` / `local` / `auto`），见 [docs/命名规范.md](docs/命名规范.md) |
 
 ## 🛠️ 开发
 
@@ -118,6 +119,7 @@ python run.py --no-webview --port 8765  # 只起后端
 │   ├── api.py / main.py    # FastAPI 路由 / 启动入口
 │   ├── state.py / db.py    # 全局状态 / SQLite 注册表
 │   ├── scanner.py          # 磁盘扫描、命名、logo 发现
+│   ├── naming.py           # 命名规范风格注册表（classic / local / auto）
 │   ├── presets.py          # 类型预设与一键初始化
 │   ├── versioning.py       # 版本 / 更新日志 / 产物解析
 │   ├── compliance.py       # 合规化检查与一键修复
@@ -140,6 +142,7 @@ python run.py --no-webview --port 8765  # 只起后端
 
 ## 📄 文档
 
+- [docs/命名规范.md](docs/命名规范.md) — 命名规范（本机资料库）· 命名规范风格系统 · 版本归档要求
 - [03_管理逻辑与AI协作报告.md](03_管理逻辑与AI协作报告.md) — 项目文件夹管理与 AI 协作全链路梳理
 - [00_设计草案.md](00_设计草案.md) / [01_计划.md](01_计划.md) / [02_AI开发闭环设计.md](02_AI开发闭环设计.md)
 
