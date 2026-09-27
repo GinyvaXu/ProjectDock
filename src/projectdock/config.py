@@ -5,8 +5,10 @@ import os
 import shutil
 from pathlib import Path
 
+from . import naming
+
 APP_NAME = "ProjectDock"
-APP_VERSION = "1.3.1"
+APP_VERSION = "1.4.0"
 
 
 def _gh_logged_in() -> bool:
@@ -15,7 +17,8 @@ def _gh_logged_in() -> bool:
         return False
     try:
         import subprocess
-        r = subprocess.run(["gh", "auth", "status"], capture_output=True, text=True, timeout=10,
+        r = subprocess.run(["gh", "auth", "status"], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=10,
                            creationflags=0x08000000 if os.name == "nt" else 0)
         return r.returncode == 0
     except Exception:
@@ -30,19 +33,23 @@ def app_data_dir() -> Path:
     return d
 
 
-def default_root() -> Path:
-    """默认管理根目录：优先环境变量，其次检测“资料库”式父目录，最后取当前目录。"""
-    env = os.environ.get("PROJECTDOCK_ROOT")
-    if env:
-        return Path(env).expanduser().resolve()
-    here = Path(__file__).resolve()
-    for p in here.parents:
+def _detect_library_root(start: Path) -> Path | None:
+    """从 start 逐级向上查找「资料库」父目录：其下存在任一命名风格的项目文件夹即命中。"""
+    for p in start.parents:
         try:
-            if any(x.is_dir() and x.name.startswith("项目") and "-" in x.name for x in p.iterdir()):
+            if any(x.is_dir() and naming.parse_name(x.name) for x in p.iterdir()):
                 return p
         except OSError:
             continue
-    return Path(os.getcwd())
+    return None
+
+
+def default_root() -> Path:
+    """默认管理根目录：优先环境变量，其次向上探测「资料库」父目录，最后取当前目录。"""
+    env = os.environ.get("PROJECTDOCK_ROOT")
+    if env:
+        return Path(env).expanduser().resolve()
+    return _detect_library_root(Path(__file__).resolve()) or Path(os.getcwd())
 
 
 class Settings:
@@ -60,6 +67,7 @@ class Settings:
                            "release": True, "archive": True},
         "update_repo": "GinyvaXu/ProjectDock",
         "github_token": "",
+        "naming_style": naming.STYLE_AUTO,
     }
 
     def __init__(self, data_dir: Path | None = None):
@@ -128,6 +136,14 @@ class Settings:
     def update_repo(self) -> str:
         return str(self._data.get("update_repo") or "GinyvaXu/ProjectDock").strip() or "GinyvaXu/ProjectDock"
 
+    @property
+    def naming_style(self) -> str:
+        """命名规范风格：auto / 已注册风格 id（见 naming.STYLES）。"""
+        value = str(self._data.get("naming_style") or naming.STYLE_AUTO).strip().lower()
+        if value == naming.STYLE_AUTO or value in naming.STYLES:
+            return value
+        return naming.STYLE_AUTO
+
     def as_dict(self) -> dict:
         return {
             "root": str(self.root),
@@ -139,6 +155,7 @@ class Settings:
             "type_tabs": self.type_tabs,
             "confirm_policy": self.confirm_policy,
             "update_repo": self.update_repo,
+            "naming_style": self.naming_style,
             "github_logged_in": bool(self.github_token) or _gh_logged_in(),
         }
 
@@ -163,6 +180,10 @@ class Settings:
                 self._data[key] = str(value or "").strip()
             elif key == "update_repo":
                 self._data[key] = str(value or "").strip() or "GinyvaXu/ProjectDock"
+            elif key == "naming_style":
+                text = str(value or "").strip().lower()
+                if text == naming.STYLE_AUTO or text in naming.STYLES:
+                    self._data[key] = text
         self.save()
         return self.as_dict()
 

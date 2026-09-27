@@ -1,58 +1,44 @@
 from __future__ import annotations
 
 import os
-import re
 from pathlib import Path
 
+from . import naming
+from .naming import ParsedProject, sanitize_title
 from .versioning import read_version
 from . import compliance
 
-INDEX_RE = re.compile(r"^项目(\d+)-")
-INVALID_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+INVALID_CHARS = naming.INVALID_CHARS  # 兼容旧引用
 
 
-def sanitize_title(title: str) -> str:
-    """清理项目名：替换 Windows 非法字符、防路径穿越（..）、去首尾空白/点。"""
-    title = INVALID_CHARS.sub("-", title or "")
-    title = re.sub(r"\.\.+", "-", title)
-    title = re.sub(r"\s+", " ", title).strip(" .-")
-    return title or "未命名项目"
+def parse_project_entry(name: str) -> ParsedProject | None:
+    """解析文件夹名（兼容全部已注册命名风格），返回富解析结果；不符合返回 None。"""
+    return naming.parse_name(name)
 
 
 def parse_project_dir(name: str) -> tuple[int, str, str] | None:
-    """解析 项目NN-类型-名称，返回 (序号, 类型, 名称)；不符合返回 None。"""
-    m = INDEX_RE.match(name)
-    if not m:
+    """解析项目文件夹名，返回 (序号, 类型, 名称)；不符合返回 None。
+
+    兼容全部已注册风格；无类型风格（如 ProjectN-名称）的类型为空串（以注册表为准）。
+    """
+    entry = naming.parse_name(name)
+    if entry is None:
         return None
-    index = int(m.group(1))
-    rest = name[len(m.group(0)):]
-    if "-" not in rest:
-        return index, rest, rest
-    ptype, _, title = rest.partition("-")
-    return index, ptype, title or rest
+    return (entry.index, entry.ptype, entry.title)
 
 
-def find_next_index(root: Path) -> int:
-    """扫描根目录中 项目NN-* 的最大序号 + 1。"""
-    best = 0
-    if not root.is_dir():
-        return 1
-    for child in root.iterdir():
-        if not child.is_dir():
-            continue
-        parsed = parse_project_dir(child.name)
-        if parsed:
-            best = max(best, parsed[0])
-    return best + 1
+def find_next_index(root: Path, style_id: str | None = None) -> int:
+    """扫描根目录中同风格项目的最大主序号 + 1。"""
+    return naming.next_index(root, style_id)
 
 
-def make_folder_name(root: Path, ptype: str, title: str) -> str:
-    """生成 项目NN-类型-名称 文件夹名（沿用资料库不补零的命名习惯）。"""
-    return f"项目{find_next_index(root)}-{ptype}-{sanitize_title(title)}"
+def make_folder_name(root: Path, ptype: str, title: str, style_id: str | None = None) -> str:
+    """按命名风格生成项目文件夹名（default: 按资料库自动识别）。"""
+    return naming.make_folder_name(root, ptype, title, style_id)
 
 
 def scan_root(root: Path, db_rows: dict[str, dict] | None = None) -> list[dict]:
-    """扫描根目录下的 项目NN-* 文件夹，并与注册表合并元数据。"""
+    """扫描根目录下的项目文件夹（兼容全部命名风格），并与注册表合并元数据。"""
     db_rows = db_rows or {}
     result: list[dict] = []
     if not root.is_dir():
@@ -60,19 +46,22 @@ def scan_root(root: Path, db_rows: dict[str, dict] | None = None) -> list[dict]:
     for child in sorted(root.iterdir(), key=lambda p: p.name.lower()):
         if not child.is_dir():
             continue
-        parsed = parse_project_dir(child.name)
-        if not parsed:
+        entry = naming.parse_name(child.name)
+        if not entry:
             continue
-        _, ptype, title = parsed
         db = db_rows.get(child.name, {})
         if db.get("excluded"):
             continue
+        # 无类型风格：类型以注册表（数据库）为准，未注册时归入「其他」
+        ptype = entry.ptype or db.get("type") or "其他"
+        title = entry.title
         result.append({
             "id": child.name,
             "name": child.name,
             "type": ptype,
             "title": title,
             "path": str(child),
+            "style": entry.style,
             "description": db.get("description", ""),
             "imported": bool(db.get("imported", False)),
             "pinned": bool(db.get("pinned", False)),
@@ -186,11 +175,11 @@ def import_folder(conn, folder_path: Path, ptype: str, description: str) -> dict
     folder = Path(folder_path).expanduser().resolve()
     if not folder.is_dir():
         raise ValueError("路径不是有效文件夹")
-    parsed = parse_project_dir(folder.name)
+    entry = naming.parse_name(folder.name)
     pid = folder.name
-    title = parsed[2] if parsed else folder.name
-    if parsed:
-        ptype = parsed[1]
+    title = entry.title if entry else folder.name
+    if entry and entry.ptype:
+        ptype = entry.ptype
     from .db import upsert_project
 
     upsert_project(conn, pid, folder.name, ptype, str(folder), description, imported=True)

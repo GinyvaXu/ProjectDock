@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import agent as agent_mod
 from . import iconmaker
-from . import ailog, backup, builder, compliance, console, contract, ghrepo, github, presets, release, scanner, techstack, update, versioning
+from . import ailog, backup, builder, compliance, console, contract, ghrepo, github, naming, presets, release, scanner, techstack, update, versioning
 from .agent import AGENTS
 from .config import APP_NAME, APP_VERSION
 from .db import delete_custom_type, delete_project, get_custom_type, get_project, list_custom_types, list_projects, set_pinned, upsert_custom_type, upsert_project
@@ -64,8 +64,8 @@ def create_app(state: AppState) -> FastAPI:
             return row
         p = state.settings.root / pid
         if p.is_dir():
-            parsed = scanner.parse_project_dir(pid)
-            return {"id": pid, "name": pid, "type": parsed[1] if parsed else "其他",
+            entry = scanner.parse_project_entry(pid)
+            return {"id": pid, "name": pid, "type": (entry.ptype or "其他") if entry else "其他",
                     "path": str(p), "description": ""}
         raise HTTPException(status_code=404, detail="项目不存在")
 
@@ -102,13 +102,28 @@ def create_app(state: AppState) -> FastAPI:
             raise HTTPException(status_code=400, detail="未知的主题")
         if payload.github_visibility is not None and payload.github_visibility not in ("private", "public"):
             raise HTTPException(status_code=400, detail="未知的仓库可见性")
+        if payload.naming_style is not None and payload.naming_style not in (naming.STYLE_AUTO, *naming.STYLES):
+            raise HTTPException(status_code=400, detail="未知的命名规范风格")
         return state.settings.update(
             root=payload.root, agent=payload.agent, theme=payload.theme,
             github_auto=payload.github_auto, github_visibility=payload.github_visibility,
             backup=payload.backup, type_tabs=payload.type_tabs,
             confirm_policy=payload.confirm_policy,
             update_repo=payload.update_repo,
+            naming_style=payload.naming_style,
         )
+
+    @api.get("/naming/styles")
+    def list_naming_styles() -> dict:
+        """命名规范风格清单（供未来版本的「一键切换」界面使用）。"""
+        root = state.settings.root
+        return {
+            "current": state.settings.naming_style,
+            "detected": naming.detect_style(root),
+            "auto": {"id": naming.STYLE_AUTO, "label": "自动识别",
+                     "description": "按资料库现有项目文件夹自动选择风格", "example": ""},
+            "styles": [style.as_dict() for style in naming.STYLES.values()],
+        }
 
     @api.get("/presets")
     def list_presets() -> list[dict]:
@@ -202,7 +217,7 @@ def create_app(state: AppState) -> FastAPI:
         ptype = payload.type
         if ptype not in PROJECT_TYPES and not get_custom_type(state.conn, ptype):
             ptype = "其他"
-        folder_name = scanner.make_folder_name(root, ptype, payload.name)
+        folder_name = scanner.make_folder_name(root, ptype, payload.name, style_id=state.settings.naming_style)
         project_path = root / folder_name
         if project_path.exists():
             raise HTTPException(status_code=409, detail="同名项目已存在")
@@ -501,12 +516,13 @@ def create_app(state: AppState) -> FastAPI:
         old_path = Path(proj["path"])
         old_row = get_project(state.conn, pid) or {}
         ptype = payload.type or proj.get("type", "其他")
-        parsed = scanner.parse_project_dir(pid)
-        current_title = parsed[2] if parsed else proj.get("name", pid)
+        entry = scanner.parse_project_entry(pid)
+        current_title = entry.title if entry else proj.get("name", pid)
         title = (payload.name or "").strip() or current_title
         description = payload.description if payload.description is not None else proj.get("description", "")
-        if parsed is not None:
-            new_name = f"项目{parsed[0]}-{ptype}-{scanner.sanitize_title(title)}"
+        if entry is not None:
+            # 保留原风格与原序号（local 风格的 2.1 子序号也原样保留）
+            new_name = naming.make_name(entry.style, entry.index_raw, ptype, scanner.sanitize_title(title))
         else:
             new_name = scanner.sanitize_title(title) if (payload.name or "").strip() else pid
         new_path = old_path
@@ -523,12 +539,12 @@ def create_app(state: AppState) -> FastAPI:
         upsert_project(state.conn, new_path.name, new_path.name, ptype, str(new_path),
                        description, imported=bool(proj.get("imported", False)),
                        pinned=bool(old_row.get("pinned", False)))
-        parsed = scanner.parse_project_dir(new_path.name)
+        entry = scanner.parse_project_entry(new_path.name)
         return {
             "id": new_path.name,
             "name": new_path.name,
             "type": ptype,
-            "title": parsed[2] if parsed else new_path.name,
+            "title": entry.title if entry else new_path.name,
             "path": str(new_path),
             "description": description,
             "imported": bool(proj.get("imported", False)),

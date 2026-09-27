@@ -6,7 +6,7 @@
   python -m projectdock.cli status <项目>                    项目状态（版本/git/AI日志数）
   python -m projectdock.cli log <项目> --agent x --action "..." --result done --summary "..."
   python -m projectdock.cli logs <项目> [--limit N]          列出 AI 操作日志
-  python -m projectdock.cli init <名称> --type <类型> [--description "..."] [--no-git]
+  python -m projectdock.cli init <名称> --type <类型> [--description "..."] [--no-git] [--style auto|classic|local]
   python -m projectdock.cli build <项目> [--script 脚本] [--archive] [--agent x]
   python -m projectdock.cli release <项目> --version X.Y.Z [--changelog "..."] [--build 脚本] [--push] [--confirm] [--agent x]
   python -m projectdock.cli archive <项目> [--version X.Y.Z] [--confirm] [--agent x]
@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
-from . import ailog, builder, compliance, contract, presets, release, scanner, techstack
+from . import ailog, builder, compliance, contract, naming, presets, release, scanner, techstack
 from .config import Settings, default_root
 from .runner import stream_command
 from .versioning import VERSION_RE, read_version
@@ -69,9 +69,19 @@ def _resolve_project(root: Path, name: str) -> Path:
 
 
 def _project_type(project: Path) -> str:
-    from .scanner import parse_project_dir
-    parsed = parse_project_dir(project.name)
-    return parsed[1] if parsed else "其他"
+    """项目类型：优先文件夹名（经典三段式）；无类型风格（如 ProjectN-名称）查注册表。"""
+    from .scanner import parse_project_entry
+    entry = parse_project_entry(project.name)
+    if entry and entry.ptype:
+        return entry.ptype
+    try:
+        from .db import list_projects
+        for row in list_projects(_db()):
+            if row["id"] == project.name or Path(row["path"]) == project:
+                return row["type"] or "其他"
+    except Exception:  # noqa: BLE001 - 注册表不可用时不阻塞 CLI
+        pass
+    return "其他"
 
 
 def cmd_contract(args) -> None:
@@ -141,7 +151,7 @@ def cmd_init(args) -> None:
     if ptype not in presets.PRESETS and not custom:
         types = "、".join(list(presets.PRESETS) + ["（自定义类型由 ProjectDock 管理）"])
         sys.exit(f"未知类型：{ptype}（可用：{types}）")
-    folder_name = scanner.make_folder_name(root, ptype, title)
+    folder_name = scanner.make_folder_name(root, ptype, title, style_id=args.style or _app_settings().naming_style)
     project_path = root / folder_name
     if project_path.exists():
         sys.exit(f"同名项目已存在：{folder_name}")
@@ -297,6 +307,8 @@ def main(argv: list[str] | None = None) -> int:
     p_init.add_argument("--type", default="其他")
     p_init.add_argument("--description", default="")
     p_init.add_argument("--no-git", action="store_true")
+    p_init.add_argument("--style", default="", choices=("", naming.STYLE_AUTO, *naming.style_ids()),
+                        help="命名规范风格（缺省读取设置，auto=按资料库自动识别）")
     p_init.set_defaults(func=cmd_init)
 
     p_build = sub.add_parser("build", help="运行项目构建脚本并可选归档产物")

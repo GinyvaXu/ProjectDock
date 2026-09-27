@@ -93,6 +93,7 @@ class SettingsUpdate(BaseModel):
     type_tabs: dict[str, list[str]] | None = None
     confirm_policy: dict[str, bool] | None = None
     update_repo: str | None = None
+    naming_style: str | None = None  # auto / classic / local（见 naming.STYLES）
 
 
 class UpdateInstall(BaseModel):

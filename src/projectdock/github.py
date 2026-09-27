@@ -22,6 +22,7 @@ def has_remote(project_path: Path) -> bool:
         return False
     try:
         r = subprocess.run(["git", "remote"], cwd=str(project_path), capture_output=True, text=True, timeout=15,
+                        encoding="utf-8", errors="replace",
                         creationflags=0x08000000 if os.name == "nt" else 0)
         return "origin" in r.stdout.split()
     except (subprocess.TimeoutExpired, OSError):
@@ -37,6 +38,7 @@ def create_repo(project_path: Path, name: str, visibility: str = "private", owne
     cmd = ["gh", "repo", "create", full, flag, "--source=.", "--remote=origin", "--push"]
     try:
         r = subprocess.run(cmd, cwd=str(project_path), capture_output=True, text=True, timeout=180,
+                        encoding="utf-8", errors="replace",
                         creationflags=0x08000000 if os.name == "nt" else 0)
         if r.returncode == 0:
             return {"ok": True, "message": r.stdout.strip() or f"已创建并推送 {full}"}
