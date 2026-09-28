@@ -24,6 +24,10 @@ MAX_READ_BYTES = 40000
 MAX_LIST_ENTRIES = 300
 MAX_CMD_TIMEOUT = 600
 
+# 浏览器 UA：部分网关（如 OpenCode GO 前置 Cloudflare）会拦截默认的 Python UA（403/1010）
+BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+              "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+
 
 class ApiAgentError(Exception):
     """API 直连失败（配置缺失 / 网络 / 服务端返回错误）。"""
@@ -45,10 +49,13 @@ def _decode(b: bytes) -> str:
         return b.decode("gbk", errors="replace")
 
 
-def _headers(api_key: str) -> dict:
-    h = {"Content-Type": "application/json", "Accept": "application/json"}
+def _headers(api_key: str, base_url: str = "") -> dict:
+    h = {"Content-Type": "application/json", "Accept": "application/json", "User-Agent": BROWSER_UA}
     if api_key:
         h["Authorization"] = "Bearer " + api_key
+    if "opencode.ai" in (base_url or "").lower():
+        # OpenCode GO 网关要求 x-opencode-session 路由头（缺失会 400）
+        h["x-opencode-session"] = "projectdock"
     return h
 
 
@@ -57,7 +64,7 @@ def list_models(base_url: str, api_key: str, timeout: int = 30) -> list[str]:
     base = normalize_base_url(base_url)
     if not base:
         raise ApiAgentError("未填写 Base URL")
-    req = urllib.request.Request(base + "/models", headers=_headers(api_key), method="GET")
+    req = urllib.request.Request(base + "/models", headers=_headers(api_key, base), method="GET")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = json.loads(resp.read().decode("utf-8", errors="replace"))
@@ -84,7 +91,7 @@ def chat_stream(base_url: str, api_key: str, model: str, messages: list[dict],
         payload["tools"] = tools
         payload["tool_choice"] = "auto"
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(base + "/chat/completions", data=data, method="POST", headers=_headers(api_key))
+    req = urllib.request.Request(base + "/chat/completions", data=data, method="POST", headers=_headers(api_key, base))
     content_parts: list[str] = []
     calls: dict[int, dict] = {}
     finish_reason = ""

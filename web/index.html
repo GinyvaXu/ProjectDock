@@ -212,6 +212,15 @@
         <label class="field"><span>AI 接入（API Key · OpenAI 兼容，贴入即可用，无需安装 pi/claude）</span>
           <div class="gh-auth-box">
             <div class="gh-token-row">
+              <select id="apiPreset" title="服务商预设（一键填入 Base URL / 模型）">
+                <option value="">服务商预设…</option>
+                <option value="deepseek">DeepSeek 官方</option>
+                <option value="opencode">OpenCode GO（订阅网关）</option>
+                <option value="openai">OpenAI</option>
+              </select>
+              <span class="gh-hint" style="margin:0">OpenCode GO 用订阅账号的 Key（环境变量 OPENCODE_GO_API_KEY）</span>
+            </div>
+            <div class="gh-token-row">
               <input id="apiBaseInput" placeholder="Base URL（DeepSeek：https://api.deepseek.com；OpenAI：https://api.openai.com/v1）" autocomplete="off" spellcheck="false">
             </div>
             <div class="gh-token-row">

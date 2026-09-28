@@ -8,7 +8,7 @@ from pathlib import Path
 from . import naming
 
 APP_NAME = "ProjectDock"
-APP_VERSION = "1.6.0"
+APP_VERSION = "1.7.0"
 
 
 def _gh_logged_in() -> bool:

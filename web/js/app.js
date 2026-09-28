@@ -2687,6 +2687,21 @@ async function runBuild(script) {
         if (st) st.textContent = "连接成功 ✓ 可用模型 " + (res.count || 0) + " 个" + (res.models && res.models.length ? "（如 " + res.models[0] + "）" : "");
       } catch (err) { if (st) st.textContent = "失败：" + err.message; }
     });
+    const apiPreset = $("apiPreset");
+    if (apiPreset) apiPreset.addEventListener("change", () => {
+      const presets = {
+        deepseek: ["https://api.deepseek.com", "deepseek-chat"],
+        opencode: ["https://opencode.ai/zen/go/v1", "deepseek-v4.1-flash"],
+        openai: ["https://api.openai.com/v1", "gpt-4o-mini"],
+      };
+      const p = presets[apiPreset.value];
+      if (p) {
+        const ab = $("apiBaseInput"), am = $("apiModelInput");
+        if (ab) ab.value = p[0];
+        if (am) am.value = p[1];
+      }
+      apiPreset.value = "";
+    });
     const btnGhRefresh = $("btnGhRefresh");
     if (btnGhRefresh) btnGhRefresh.addEventListener("click", loadGithubAuth);
     const btnGhLogin = $("btnGhLogin");

@@ -18,6 +18,15 @@ def test_normalize_base_url():
     assert aa.normalize_base_url("") == ""
 
 
+def test_headers_opencode_go_compat():
+    h = aa._headers("sk-x", "https://opencode.ai/zen/go/v1")
+    assert h["Authorization"] == "Bearer sk-x"
+    assert h["x-opencode-session"] == "projectdock"  # 网关必需路由头
+    assert "User-Agent" in h and "Mozilla" in h["User-Agent"]  # 绕过 Cloudflare 1010
+    h2 = aa._headers("sk-x", "https://api.deepseek.com")
+    assert "x-opencode-session" not in h2
+
+
 def test_tools_file_ops(tmp_path):
     out, summary = aa.execute_tool(tmp_path, "write_file", {"path": "docs/a.md", "content": "# A\n内容"})
     assert "已写入" in out and (tmp_path / "docs" / "a.md").is_file()
