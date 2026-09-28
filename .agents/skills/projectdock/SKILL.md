@@ -7,7 +7,9 @@ description: ProjectDock 项目坞的开发规范。当用户要求对 ProjectDo
 
 ## 架构
 - 后端：FastAPI（src/projectdock/api.py），无状态、通过 AppState 注入依赖
-- 命名规范风格：naming.py 注册表（classic / local / auto），scanner 兼容全部风格；新建/重命名按设置 naming_style；规范见 docs/命名规范.md
+- 管理协议：protocols.py 注册表（12 个内置类型：骨架/合规/菜单/版本方案/归档规则一处定义）；新增类型在此登记；见 docs/管理协议.md
+- 命名规范风格：naming.py 注册表（classic / local / free / auto），scanner 兼容严格风格；新建/重命名按设置 naming_style；规范见 docs/命名规范.md
+- 版本方案：versioning.py 支持 semver / archive / upstream / none（按类型默认，项目可覆盖，DB projects.version_scheme）
 - AI 与发布：agent.py（claude/pi 全自动 + 备份 + 任务报告）、github.py（自动建仓）、release.py（发布向导）
 - 前端：原生 HTML/CSS/JS（web/），弹簧动画在 web/js/spring.js，禁止引入构建步骤
 - 数据：SQLite（%APPDATA%/ProjectDock/data.db）+ 文件系统扫描；根目录可配置
