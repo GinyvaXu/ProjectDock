@@ -26,6 +26,11 @@ ProjectDock 项目坞：本地项目文件管理器：iOS 风格 UI、Python 后
 3. 任务执行前先做安全备份（快照进 versions/backups/）
 4. 每轮迭代结束交付报告：改动清单 / 构建产物路径 / 测试建议
 
+## 本地迭代安装（用户已授权 · 2026-09-28）
+- 每次功能迭代完成后**自动执行**：全量测试 → 构建 Setup（`.venv\Scripts\python.exe build_setup.py`）→ 卸载旧版并安装新版 → 健康检查；**无需再次征求确认**
+- 一键执行：`powershell -NoProfile -ExecutionPolicy Bypass -File reinstall_local.ps1`（自动查找最新 Setup、卸载、安装、验证）
+- 安装包升级自清理旧版本程序文件（`[InstallDelete]`）；用户数据（%APPDATA%\ProjectDock）保留；构建产物按版本归档 `versions/vX.Y.Z/dist/`
+
 ## 确认策略（强制）
 - 以下操作必须先获得**用户明确同意**才能执行：推送 GitHub（push）/ 删除文件（delete）/ 创建 GitHub 仓库（github_create）/ 发布 Release（release）/ 归档移动构建产物（archive）
 - 执行上述操作时：`projectdock-cli` 对应命令要求加 `--confirm` 参数；外部 agent 不得擅自 push / 删除 / 建仓

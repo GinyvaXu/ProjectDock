@@ -25,6 +25,7 @@ description: ProjectDock 项目坞的开发规范。当用户要求对 ProjectDo
 - build_exe.py：PyInstaller windowed 版
 - 发布前：全量测试 → 覆盖率 → 构建 → 冒烟 → 归档 → 两次提交（release:/build:）
 - VERSION 是版本号唯一来源，禁止在代码里硬编码版本号
+- 本地迭代（用户已授权自动执行）：构建后运行 `reinstall_local.ps1`（卸载旧版 → 安装最新 Setup → 健康检查），无需再次确认
 
 ## 常见坑
 - Windows 中文路径：一律用 Python pathlib / PowerShell -LiteralPath
