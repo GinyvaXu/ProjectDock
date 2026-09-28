@@ -3,6 +3,12 @@
 本文件记录 ProjectDock 的版本迭代。格式：语义化版本 + 日期 + 变更分组。
 
 
+## [1.7.0] - 2026-09-28
+### Added（AI 后端兼容 OpenCode GO）
+- API 直连兼容 **OpenCode GO 订阅网关**（`https://opencode.ai/zen/go/v1`）：自动附加 `x-opencode-session` 路由头（网关缺失会 400）；请求使用浏览器 UA，绕过网关前置 Cloudflare 对 Python 默认 UA 的拦截（403 / error 1010）
+- 设置 → AI 接入 新增「**服务商预设**」：DeepSeek 官方 / OpenCode GO / OpenAI，一键填入 Base URL + 模型（OpenCode GO 默认 `deepseek-v4.1-flash`）
+- 测试：全量 211 个通过，覆盖率 81.97%（门槛 80%）；OpenCode GO 真实网关端到端实测通过（30 个可用模型 + write→read 工具链）
+
 ## [1.6.0] - 2026-09-28
 ### Added（API 直连 AI · 一句话建项目 · 新类型/风格沿用）
 - **AI 接入（API Key）**：设置里填 Base URL / 模型 / API Key（OpenAI 兼容，DeepSeek 预设），「测试连接」列出可用模型；Key 仅存本机 settings.json，接口不回显

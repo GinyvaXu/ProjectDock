@@ -1,7 +1,12 @@
 # ProjectDock 项目状态
-- 版本：1.6.0（API 直连 AI + 一句话建项目自动生成文档）
-- 状态：v1.5.0 → v1.6.0 功能迭代（开发中，未发布构建）
+- 版本：1.7.0（AI 后端兼容 OpenCode GO）
+- 状态：v1.6.0 → v1.7.0 功能迭代（开发中，未发布构建）
 - GitHub：https://github.com/GinyvaXu/ProjectDock（私有，main 分支）
+
+## v1.7.0（2026-09-28）
+1. API 直连兼容 OpenCode GO 订阅网关（x-opencode-session 头 + 浏览器 UA 绕 Cloudflare 拦截）
+2. 服务商预设：DeepSeek / OpenCode GO / OpenAI 一键填 Base URL + 模型
+3. 质量：211 测试通过 / 覆盖率 81.97%；OpenCode GO 真实网关端到端实测通过
 
 ## v1.6.0（2026-09-28）
 1. AI 接入（API Key）：OpenAI 兼容（DeepSeek 预设）+ 测试连接；Key 仅存本机
