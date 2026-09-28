@@ -23,7 +23,7 @@ def test_presets_endpoint(client):
 
 def test_agents_endpoint(client):
     agents = client.get("/api/agents").json()
-    assert [a["name"] for a in agents] == ["claude", "pi"]
+    assert [a["name"] for a in agents] == ["claude", "pi", "api"]
 
 
 def test_init_endpoint_updates_description(client):

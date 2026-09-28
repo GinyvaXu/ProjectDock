@@ -8,7 +8,7 @@ from pathlib import Path
 from . import naming
 
 APP_NAME = "ProjectDock"
-APP_VERSION = "1.5.0"
+APP_VERSION = "1.6.0"
 
 
 def _gh_logged_in() -> bool:
@@ -68,6 +68,9 @@ class Settings:
         "update_repo": "GinyvaXu/ProjectDock",
         "github_token": "",
         "naming_style": naming.STYLE_AUTO,
+        "api_base_url": "https://api.deepseek.com",
+        "api_model": "deepseek-chat",
+        "api_key": "",
     }
 
     def __init__(self, data_dir: Path | None = None):
@@ -144,6 +147,23 @@ class Settings:
             return value
         return naming.STYLE_AUTO
 
+    @property
+    def api_base_url(self) -> str:
+        """API 直连 Base URL（OpenAI 兼容，如 https://api.deepseek.com）。"""
+        return str(self._data.get("api_base_url") or "").strip()
+
+    @property
+    def api_model(self) -> str:
+        return str(self._data.get("api_model") or "").strip()
+
+    @property
+    def api_key(self) -> str:
+        return str(self._data.get("api_key") or "").strip()
+
+    @property
+    def api_configured(self) -> bool:
+        return bool(self.api_base_url and self.api_model and self.api_key)
+
     def as_dict(self) -> dict:
         return {
             "root": str(self.root),
@@ -156,6 +176,10 @@ class Settings:
             "confirm_policy": self.confirm_policy,
             "update_repo": self.update_repo,
             "naming_style": self.naming_style,
+            "api_base_url": self.api_base_url,
+            "api_model": self.api_model,
+            "api_key_set": bool(self.api_key),
+            "api_configured": self.api_configured,
             "github_logged_in": bool(self.github_token) or _gh_logged_in(),
         }
 
@@ -184,6 +208,10 @@ class Settings:
                 text = str(value or "").strip().lower()
                 if text == naming.STYLE_AUTO or text in naming.STYLES:
                     self._data[key] = text
+            elif key in ("api_base_url", "api_model"):
+                self._data[key] = str(value or "").strip()
+            elif key == "api_key":
+                self._data[key] = str(value or "").strip()
         self.save()
         return self.as_dict()
 

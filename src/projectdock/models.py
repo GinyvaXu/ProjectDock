@@ -3,7 +3,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 PROJECT_TYPES = ["软件", "网站", "游戏", "PPT", "文稿", "脚本", "其他"]
-AGENT_NAMES = ["claude", "pi"]
+AGENT_NAMES = ["claude", "pi", "api"]
 THEMES = ["system", "light", "dark"]
 
 
@@ -94,6 +94,15 @@ class SettingsUpdate(BaseModel):
     confirm_policy: dict[str, bool] | None = None
     update_repo: str | None = None
     naming_style: str | None = None  # auto / classic / local（见 naming.STYLES）
+    api_base_url: str | None = None  # API 直连（OpenAI 兼容）
+    api_model: str | None = None
+    api_key: str | None = None
+
+
+class AiTestPayload(BaseModel):
+    """测试 API 接入：可传未保存的临时值覆盖设置。"""
+    base_url: str | None = None
+    api_key: str | None = None
 
 
 class UpdateInstall(BaseModel):

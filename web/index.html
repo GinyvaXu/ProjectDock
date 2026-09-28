@@ -109,8 +109,10 @@
       <form id="newForm">
         <label class="field"><span>项目名称</span><input name="name" required maxlength="60" placeholder="例如：待办清单"></label>
         <label class="field"><span>项目类型</span><select name="type" id="newType"></select></label>
-        <label class="field"><span>描述</span><textarea name="description" rows="2" placeholder="一句话说明这个项目…"></textarea></label>
+        <label class="field"><span>用途与预期管理（一句话）</span><textarea name="description" rows="2" placeholder="例如：收集整理××资料、按批次归档；或：Python 小工具，发布到 GitHub 持续迭代"></textarea></label>
         <label class="check"><input type="checkbox" name="preset" checked><span>使用预设一键初始化（含 git init + 首次提交）</span></label>
+        <label class="check"><input type="checkbox" name="ai_docs" id="newAiDocs"><span>创建后用 AI 生成项目文档（需已配置 API Key）</span></label>
+        <div class="preset-hint" id="aiDocsHint" hidden></div>
         <label class="check"><input type="checkbox" name="github"><span>创建 GitHub 仓库并推送</span></label>
         <div class="preset-hint" id="presetHint"></div>
         <footer class="modal-foot">
@@ -205,6 +207,22 @@
               <button type="button" class="btn btn-sm btn-primary" id="btnGhLogin">登录</button>
             </div>
             <p class="gh-hint">优先使用 gh 命令行登录态（gh auth login）；无 gh 时在此粘贴令牌。创建令牌：<a href="https://github.com/settings/tokens" target="_blank" rel="noopener">github.com/settings/tokens</a></p>
+          </div>
+        </label>
+        <label class="field"><span>AI 接入（API Key · OpenAI 兼容，贴入即可用，无需安装 pi/claude）</span>
+          <div class="gh-auth-box">
+            <div class="gh-token-row">
+              <input id="apiBaseInput" placeholder="Base URL（DeepSeek：https://api.deepseek.com；OpenAI：https://api.openai.com/v1）" autocomplete="off" spellcheck="false">
+            </div>
+            <div class="gh-token-row">
+              <input id="apiModelInput" placeholder="模型（如 deepseek-chat / gpt-4o-mini）" autocomplete="off" spellcheck="false">
+              <input id="apiKeyInput" type="password" placeholder="API Key（留空保持不变）" autocomplete="off" spellcheck="false">
+            </div>
+            <div class="gh-auth-actions">
+              <button type="button" class="btn btn-sm" id="btnAiTest">测试连接</button>
+              <span class="gh-auth-status" id="aiTestStatus"></span>
+            </div>
+            <p class="gh-hint">Key 仅保存在本机 settings.json，不上传。配置后：新建项目可「一句话 → AI 自动生成文档」；「AI 管理」里多出「API 直连」后端（可读写文件、运行命令，任务前自动备份）。</p>
           </div>
         </label>
         <label class="check"><input type="checkbox" name="backup" checked><span>AI 任务 / 发布前自动备份（zip 快照到 versions/backups/）</span></label>

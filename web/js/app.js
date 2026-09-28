@@ -2056,7 +2056,7 @@ async function runBuild(script) {
   }
 
   /* 通用执行：追加用户消息 -> 携带会话历史调用 agent -> 流式回显 -> 存档 */
-  async function runPrompt(wrapId, projectId, agentSelId, prompt) {
+  async function runPrompt(wrapId, projectId, agentSelId, prompt, agentOverride) {
     if (S._chatRunning[wrapId] || !projectId || !prompt) return;
     const sendId = wrapId.replace("Msgs", "Send");
     const inputId = wrapId.replace("Msgs", "Input");
@@ -2065,7 +2065,7 @@ async function runBuild(script) {
     session.msgs.push({ kind: "user", text: prompt });
     session.history.push({ role: "user", text: prompt });
     appendChatMessage("user", prompt, wrapId);
-    const agent = $(agentSelId || "agentSelect").value;
+    const agent = agentOverride || $(agentSelId || "agentSelect").value;
     const aiEl = appendChatMessage("ai", "", wrapId);
     aiEl.classList.add("running");
     setAIStatus(aiEl, "正在连接 " + agentLabel(agent) + " …");
@@ -2088,6 +2088,13 @@ async function runBuild(script) {
         if (data.type === "status") {
           setAIStatus(aiEl, data.text);
           aiEl.classList.remove("running");
+        } else if (data.type === "chunk") {
+          setAIStatus(aiEl, "");
+          raw += data.text;
+          setAIText(aiEl, raw);
+          aiEl.classList.remove("running");
+          const w = $(wrapId);
+          if (w) w.scrollTop = w.scrollHeight;
         } else if (data.type === "line") {
           setAIStatus(aiEl, "");
           raw = raw ? raw + "\n" + data.text : data.text;
@@ -2282,6 +2289,16 @@ async function runBuild(script) {
     form.elements.update_repo.value = S.settings.update_repo || "GinyvaXu/ProjectDock";
     const cur = $("updateCurrent");
     if (cur) cur.textContent = S.appVersion || "";
+    // AI 接入（API Key）
+    const apiBase = $("apiBaseInput"), apiModel = $("apiModelInput"), apiKey = $("apiKeyInput");
+    if (apiBase) apiBase.value = S.settings.api_base_url || "";
+    if (apiModel) apiModel.value = S.settings.api_model || "";
+    if (apiKey) {
+      apiKey.value = "";
+      apiKey.placeholder = S.settings.api_key_set ? "API Key：已配置（留空保持不变）" : "API Key（粘贴后保存）";
+    }
+    const aiSt = $("aiTestStatus");
+    if (aiSt) aiSt.textContent = S.settings.api_configured ? "已配置 ✓" : "未配置";
     loadNamingStyleOptions();
     renderTypeTabsEditor();
     openModal("settings");
@@ -2363,6 +2380,10 @@ async function runBuild(script) {
       };
       const nsEl = form.elements.naming_style;
       if (nsEl && nsEl.value) body.naming_style = nsEl.value;
+      const ab = $("apiBaseInput"), am = $("apiModelInput"), ak = $("apiKeyInput");
+      if (ab) body.api_base_url = ab.value.trim();
+      if (am) body.api_model = am.value.trim();
+      if (ak && ak.value.trim()) body.api_key = ak.value.trim();
       S.settings = await api("/api/settings", { method: "PUT", body });
       S.namingStyles = null;  // 风格可能变化（含自动识别结果），下次打开重新拉取
       applyTheme(S.settings.theme);
@@ -2506,6 +2527,8 @@ async function runBuild(script) {
       github: form.elements.github.checked,
     };
     if (!body.name) return toast("请填写项目名称", "err");
+    const wantAi = !!(form.elements.ai_docs && form.elements.ai_docs.checked && S.settings.api_configured);
+    const desc = body.description;
     try {
       const created = await api("/api/projects", { method: "POST", body: body });
       closeModal("new");
@@ -2517,6 +2540,15 @@ async function runBuild(script) {
       openDrawer(created.id);
       if (created.github && !created.github.ok) toast("GitHub：" + created.github.message, "err");
       else if (created.github) toast("GitHub：" + created.github.message);
+      if (wantAi) {
+        setTimeout(() => {
+          showTab("ai");
+          const prompt = "请根据这个新项目的用途描述，为它生成/完善项目文档：\n「" + (desc || "（未填写描述，按目录现状推断）") + "」\n" +
+            "要求：先查看目录现状；创建或完善 README.md（项目用途、目录结构、快速开始、约定），必要时补充 AGENTS.md；" +
+            "用中文，不要编造未实现的内容；完成后简短报告。";
+          runPrompt("chatMsgs", created.id, "agentSelect", prompt, "api");
+        }, 400);
+      }
     } catch (err) { toast(err.message, "err"); }
   }
 
@@ -2560,6 +2592,18 @@ async function runBuild(script) {
   function bindEvents() {
     $("btnNewProject").addEventListener("click", () => {
       $("newForm").elements.github.checked = !!S.settings.github_auto;
+      const cb = $("newAiDocs");
+      const hint = $("aiDocsHint");
+      if (cb) {
+        cb.checked = false;
+        cb.disabled = !S.settings.api_configured;
+        if (hint) {
+          hint.hidden = false;
+          hint.textContent = S.settings.api_configured
+            ? "AI 文档：创建后自动读取目录并按用途描述生成/完善 README 等项目文档（API 直连，任务前自动备份）。"
+            : "AI 文档：需先在「设置 → AI 接入」粘贴 API Key 后可用。";
+        }
+      }
       openModal("new");
     });
     $("btnImport").addEventListener("click", () => openModal("import"));
@@ -2630,6 +2674,19 @@ async function runBuild(script) {
     $("settingsForm").addEventListener("submit", saveSettings);
     const namingSel = $("namingStyleSelect");
     if (namingSel) namingSel.addEventListener("change", renderNamingHint);
+    const aiTest = $("btnAiTest");
+    if (aiTest) aiTest.addEventListener("click", async () => {
+      const st = $("aiTestStatus");
+      const ab = $("apiBaseInput"), ak = $("apiKeyInput");
+      if (st) st.textContent = "测试中…";
+      try {
+        const res = await api("/api/ai/test", { method: "POST", body: {
+          base_url: ab ? ab.value.trim() : "",
+          api_key: ak && ak.value.trim() ? ak.value.trim() : "",
+        }});
+        if (st) st.textContent = "连接成功 ✓ 可用模型 " + (res.count || 0) + " 个" + (res.models && res.models.length ? "（如 " + res.models[0] + "）" : "");
+      } catch (err) { if (st) st.textContent = "失败：" + err.message; }
+    });
     const btnGhRefresh = $("btnGhRefresh");
     if (btnGhRefresh) btnGhRefresh.addEventListener("click", loadGithubAuth);
     const btnGhLogin = $("btnGhLogin");

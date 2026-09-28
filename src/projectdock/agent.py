@@ -21,6 +21,12 @@ AGENTS = {
         "system_args": ["--append-system-prompt", "{file}"],
         "hint": "pi -p \"...\" 非交互模式（在当前项目目录执行）",
     },
+    "api": {
+        "label": "API 直连",
+        "command": [],
+        "system_args": [],
+        "hint": "设置 → AI 接入 里填 Base URL / 模型 / API Key（OpenAI 兼容，如 DeepSeek），无需安装 pi/claude",
+    },
 }
 
 
@@ -154,35 +160,52 @@ async def run_agent_task(state, project_path: Path, agent: str, prompt: str, emi
         except Exception as exc:  # noqa: BLE001
             emit(f"[备份] 跳过（{exc}）")
 
-    base_cmd = build_command(agent, prompt)
-    tmp_ctx = None
-    if context:
+    if agent == "api":
+        import asyncio as _asyncio
+
+        from . import api_agent
+        status(f"正在调用 {label}（{state.settings.api_model or '未配置模型'}）…")
         try:
-            tmp_ctx = tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8")
-            tmp_ctx.write(context)
-            tmp_ctx.close()
-            extra = [x.format(file=tmp_ctx.name) if "{file}" in x else x for x in (AGENTS.get(agent) or AGENTS["pi"]).get("system_args", [])]
-            base_cmd = [base_cmd[0], *extra, *base_cmd[1:]]
-        except OSError:
-            tmp_ctx = None
-    cmd = resolve_command(base_cmd)
-    status(f"正在调用 {label}：{' '.join(cmd[:4])}{' …' if len(cmd) > 4 else ''}")
-    try:
-        code = await stream_command(emit, cmd, str(project_path))
-    except Exception as exc:  # noqa: BLE001
-        emit("")
-        emit("———— 任务报告 ————")
-        emit(f"状态：失败（无法启动命令：{exc}）")
-        hint = AGENTS.get(agent, {}).get("hint")
-        if hint:
-            emit(f"提示：{hint}")
-        raise
-    finally:
-        if tmp_ctx:
+            await _asyncio.to_thread(api_agent.run_api_agent, state.settings, project_path, prompt, emit, context)
+            code = 0
+        except Exception as exc:  # noqa: BLE001
+            emit("")
+            emit("———— 任务报告 ————")
+            emit(f"状态：失败（{exc}）")
+            hint = AGENTS.get(agent, {}).get("hint")
+            if hint:
+                emit(f"提示：{hint}")
+            raise
+    else:
+        base_cmd = build_command(agent, prompt)
+        tmp_ctx = None
+        if context:
             try:
-                os.unlink(tmp_ctx.name)
+                tmp_ctx = tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8")
+                tmp_ctx.write(context)
+                tmp_ctx.close()
+                extra = [x.format(file=tmp_ctx.name) if "{file}" in x else x for x in (AGENTS.get(agent) or AGENTS["pi"]).get("system_args", [])]
+                base_cmd = [base_cmd[0], *extra, *base_cmd[1:]]
             except OSError:
-                pass
+                tmp_ctx = None
+        cmd = resolve_command(base_cmd)
+        status(f"正在调用 {label}：{' '.join(cmd[:4])}{' …' if len(cmd) > 4 else ''}")
+        try:
+            code = await stream_command(emit, cmd, str(project_path))
+        except Exception as exc:  # noqa: BLE001
+            emit("")
+            emit("———— 任务报告 ————")
+            emit(f"状态：失败（无法启动命令：{exc}）")
+            hint = AGENTS.get(agent, {}).get("hint")
+            if hint:
+                emit(f"提示：{hint}")
+            raise
+        finally:
+            if tmp_ctx:
+                try:
+                    os.unlink(tmp_ctx.name)
+                except OSError:
+                    pass
 
     status("任务已结束，正在汇总报告…")
     emit("")

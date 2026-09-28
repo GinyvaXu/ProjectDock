@@ -22,6 +22,7 @@ from .agent import AGENTS
 from .config import APP_NAME, APP_VERSION
 from .db import delete_custom_type, delete_project, get_custom_type, get_project, list_custom_types, list_projects, set_pinned, set_version_scheme, upsert_custom_type, upsert_project
 from .models import (AGENT_NAMES, PROJECT_TYPES, THEMES, AILogCreate, AgentBatch, AgentRun,
+                     AiTestPayload,
                      BackupRestore, BuildRun, ComplianceFix, CustomTypeCreate, GithubAuthPayload,
                      GithubCreatePayload, GithubSetRemotePayload, IconPayload, OpenPath, OpenUrl,
                      ProjectCreate, ProjectImport, ProjectInit, ProjectUpdate, ReleaseRun, SettingsUpdate,
@@ -88,6 +89,13 @@ def create_app(state: AppState) -> FastAPI:
             }
         return None
 
+    def _resolve_agent(requested: str | None) -> str:
+        """解析 AI 后端：未知/缺省回落设置；api 未配置时给出明确提示。"""
+        agent = requested if requested in AGENT_NAMES else state.settings.agent
+        if agent == "api" and not state.settings.api_configured:
+            raise HTTPException(status_code=400, detail="尚未配置 API 接入：请在「设置 → AI 接入」填写 Base URL / 模型 / API Key")
+        return agent
+
     @api.get("/health")
     def health() -> dict:
         return {"ok": True, "app": APP_NAME, "version": APP_VERSION, "root": str(state.settings.root)}
@@ -106,6 +114,10 @@ def create_app(state: AppState) -> FastAPI:
             raise HTTPException(status_code=400, detail="未知的仓库可见性")
         if payload.naming_style is not None and payload.naming_style not in (naming.STYLE_AUTO, *naming.STYLES):
             raise HTTPException(status_code=400, detail="未知的命名规范风格")
+        if payload.api_base_url is not None:
+            text = payload.api_base_url.strip()
+            if text and not text.startswith(("http://", "https://")):
+                raise HTTPException(status_code=400, detail="API Base URL 需以 http:// 或 https:// 开头")
         return state.settings.update(
             root=payload.root, agent=payload.agent, theme=payload.theme,
             github_auto=payload.github_auto, github_visibility=payload.github_visibility,
@@ -113,7 +125,24 @@ def create_app(state: AppState) -> FastAPI:
             confirm_policy=payload.confirm_policy,
             update_repo=payload.update_repo,
             naming_style=payload.naming_style,
+            api_base_url=payload.api_base_url, api_model=payload.api_model, api_key=payload.api_key,
         )
+
+    @api.post("/ai/test")
+    def ai_test(payload: AiTestPayload | None = None) -> dict:
+        """测试 API 接入（可传未保存的 Base URL / Key 覆盖设置）。"""
+        from . import api_agent
+        base_url = (payload.base_url if payload and payload.base_url else state.settings.api_base_url)
+        api_key = (payload.api_key if payload and payload.api_key else state.settings.api_key)
+        if not str(base_url or "").strip():
+            raise HTTPException(status_code=400, detail="未填写 Base URL")
+        if not str(api_key or "").strip():
+            raise HTTPException(status_code=400, detail="未填写 API Key")
+        try:
+            models = api_agent.list_models(base_url, api_key)
+        except api_agent.ApiAgentError as exc:
+            raise HTTPException(status_code=400, detail=f"连接失败：{exc}")
+        return {"ok": True, "models": models[:60], "count": len(models)}
 
     @api.get("/naming/styles")
     def list_naming_styles() -> dict:
@@ -743,7 +772,7 @@ def create_app(state: AppState) -> FastAPI:
 
     @api.post("/agent/batch")
     def run_agent_batch(payload: AgentBatch) -> dict:
-        agent = payload.agent if payload.agent in AGENT_NAMES else state.settings.agent
+        agent = _resolve_agent(payload.agent)
         jobs = []
         for pid in payload.project_ids:
             try:
@@ -789,7 +818,7 @@ def create_app(state: AppState) -> FastAPI:
     @api.post("/agent/run")
     def run_agent(payload: AgentRun) -> dict:
         proj = _resolve_project(payload.project_id)
-        agent = payload.agent if payload.agent in AGENT_NAMES else state.settings.agent
+        agent = _resolve_agent(payload.agent)
         spec = _type_spec(proj.get("type", "其他"))
         context = agent_mod.system_prompt(proj["name"], proj["path"], spec,
                                           state.settings.confirm_policy,
