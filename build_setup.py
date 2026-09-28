@@ -61,6 +61,11 @@ SetupIconFile=@@ICON@@
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional tasks:"; Flags: unchecked
 
+[InstallDelete]
+; 升级自清理：删除旧版本程序文件（_internal 整目录 + 旧版 exe），保证干净升级、无残留
+Type: filesandordirs; Name: "{app}\_internal"
+Type: files; Name: "{app}\ProjectDock_v*.exe"
+
 [Files]
 Source: "@@APPDIR@@\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
