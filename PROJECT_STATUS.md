@@ -1,7 +1,13 @@
 # ProjectDock 项目状态
-- 版本：1.5.0（管理协议重构 + 5 个新协议 + 4 种版本方案 + 自由命名风格）
-- 状态：v1.4.0 → v1.5.0 功能迭代（开发中，未发布构建）
+- 版本：1.6.0（API 直连 AI + 一句话建项目自动生成文档）
+- 状态：v1.5.0 → v1.6.0 功能迭代（开发中，未发布构建）
 - GitHub：https://github.com/GinyvaXu/ProjectDock（私有，main 分支）
+
+## v1.6.0（2026-09-28）
+1. AI 接入（API Key）：OpenAI 兼容（DeepSeek 预设）+ 测试连接；Key 仅存本机
+2. 「API 直连」AI 后端：流式 + 工具调用（list/read/write/run_command，限项目目录内，覆盖自动 .bak）
+3. 新建项目「一句话 → AI 自动生成文档」；描述字段升级为「用途与预期管理」
+4. 质量：210 测试通过 / 覆盖率 81.84%；DeepSeek 真实 API 端到端实测通过
 
 ## v1.5.0（2026-09-28）
 1. 「管理协议」体系（protocols.py）：骨架 / 合规 / 菜单 / 版本方案 / 归档规则单一数据源，presets/compliance/契约/AI 上下文协议驱动
