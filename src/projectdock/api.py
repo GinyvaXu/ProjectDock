@@ -17,10 +17,10 @@ from fastapi.staticfiles import StaticFiles
 
 from . import agent as agent_mod
 from . import iconmaker
-from . import ailog, backup, builder, compliance, console, contract, ghrepo, github, naming, presets, release, scanner, techstack, update, versioning
+from . import ailog, backup, builder, compliance, console, contract, ghrepo, github, naming, presets, protocols, release, scanner, techstack, update, versioning
 from .agent import AGENTS
 from .config import APP_NAME, APP_VERSION
-from .db import delete_custom_type, delete_project, get_custom_type, get_project, list_custom_types, list_projects, set_pinned, upsert_custom_type, upsert_project
+from .db import delete_custom_type, delete_project, get_custom_type, get_project, list_custom_types, list_projects, set_pinned, set_version_scheme, upsert_custom_type, upsert_project
 from .models import (AGENT_NAMES, PROJECT_TYPES, THEMES, AILogCreate, AgentBatch, AgentRun,
                      BackupRestore, BuildRun, ComplianceFix, CustomTypeCreate, GithubAuthPayload,
                      GithubCreatePayload, GithubSetRemotePayload, IconPayload, OpenPath, OpenUrl,
@@ -76,6 +76,7 @@ def create_app(state: AppState) -> FastAPI:
                 "name": ptype, "label": spec["label"], "description": spec["description"],
                 "dirs": spec.get("dirs", []), "files": spec.get("files", {}),
                 "git": spec.get("git", True), "custom": False,
+                "version_scheme": protocols.version_scheme_for(ptype),
             }
         row = get_custom_type(state.conn, ptype)
         if row:
@@ -83,6 +84,7 @@ def create_app(state: AppState) -> FastAPI:
                 "name": row["name"], "label": row["label"], "description": row["description"],
                 "dirs": json.loads(row["dirs"]), "files": json.loads(row["files"]),
                 "git": bool(row["git"]), "custom": True,
+                "version_scheme": protocols.version_scheme_for(ptype),
             }
         return None
 
@@ -133,12 +135,14 @@ def create_app(state: AppState) -> FastAPI:
                 "type": t, "label": spec["label"], "description": spec["description"],
                 "files": list(spec.get("files", {})), "dirs": list(spec.get("dirs", [])),
                 "git": spec.get("git", True), "custom": False,
+                "version_scheme": protocols.version_scheme_for(t),
             })
         for row in list_custom_types(state.conn):
             out.append({
                 "type": row["name"], "label": row["label"], "description": row["description"],
                 "files": list(json.loads(row["files"])), "dirs": json.loads(row["dirs"]),
                 "git": bool(row["git"]), "custom": True,
+                "version_scheme": protocols.version_scheme_for(row["name"]),
             })
         return out
 
@@ -153,6 +157,7 @@ def create_app(state: AppState) -> FastAPI:
                 "git": spec.get("git", True), "custom": False,
                 "tabs": presets.tabs_for_type(t, override),
                 "tab_labels": presets.TAB_LABELS,
+                "version_scheme": protocols.version_scheme_for(t),
             })
         for row in list_custom_types(state.conn):
             ptype = row["name"]
@@ -162,6 +167,7 @@ def create_app(state: AppState) -> FastAPI:
                 "git": bool(row["git"]), "custom": True,
                 "tabs": presets.tabs_for_type(ptype, override),
                 "tab_labels": presets.TAB_LABELS,
+                "version_scheme": protocols.version_scheme_for(ptype),
             })
         return out
 
@@ -189,7 +195,7 @@ def create_app(state: AppState) -> FastAPI:
         root = state.settings.root
         root.mkdir(parents=True, exist_ok=True)
         db_rows = {p["id"]: p for p in list_projects(state.conn)}
-        projects = scanner.scan_root(root, db_rows)
+        projects = scanner.scan_root(root, db_rows, style_id=state.settings.naming_style)
         known = {p["id"] for p in projects}
         for proj in projects:
             row = db_rows.get(proj["id"])
@@ -201,14 +207,24 @@ def create_app(state: AppState) -> FastAPI:
             if row["excluded"]:
                 continue
             if row["imported"] and row["id"] not in known and Path(row["path"]).is_dir():
-                parsed = scanner.parse_project_dir(row["id"])
-                row["title"] = parsed[2] if parsed else row["id"]
+                entry = scanner.parse_project_entry(row["id"])
+                row["title"] = entry.title if entry else row["id"]
                 row["version"] = versioning.read_version(Path(row["path"]))
                 row["has_git"] = (Path(row["path"]) / ".git").exists()
                 row["has_logo"] = scanner.find_logo(Path(row["path"])) is not None
                 row["compliant"] = compliance.quick_compliance(Path(row["path"]), row["type"])
+                override = row.get("version_scheme") or ""
+                row["version_scheme"] = protocols.version_scheme_for(row["type"], override)
+                row["version_scheme_set"] = override
                 projects.append(row)
         return sorted(projects, key=lambda pj: (not bool(pj.get("pinned")), 0))
+
+    @api.get("/projects/unmanaged")
+    def list_unmanaged_folders() -> list[dict]:
+        """未纳管文件夹（严格命名风格下，不符合风格且未导入的根目录文件夹）。"""
+        root = state.settings.root
+        db_rows = {p["id"]: p for p in list_projects(state.conn)}
+        return scanner.list_unmanaged(root, db_rows, style_id=state.settings.naming_style)
 
     @api.post("/projects", status_code=201)
     def create_project(payload: ProjectCreate) -> dict:
@@ -347,7 +363,11 @@ def create_app(state: AppState) -> FastAPI:
     @api.get("/projects/{pid}/versions")
     def get_versions(pid: str) -> dict:
         proj = _resolve_project(pid)
-        return versioning.project_version_summary(Path(proj["path"]))
+        ptype = proj.get("type") or "其他"
+        override = proj.get("version_scheme") or ""
+        scheme = protocols.version_scheme_for(ptype, override)
+        return versioning.project_version_summary(
+            Path(proj["path"]), scheme=scheme, build_archive=protocols.build_archive_for(ptype))
 
     @api.get("/projects/{pid}/git-status")
     def get_git_status(pid: str) -> dict:
@@ -511,8 +531,10 @@ def create_app(state: AppState) -> FastAPI:
 
     @api.put("/projects/{pid}")
     def update_project(pid: str, payload: ProjectUpdate) -> dict:
-        """编辑项目信息：name 重命名标题、type 更新类型、description 存库。"""
+        """编辑项目信息：name 重命名标题、type 更新类型、description 存库、version_scheme 覆盖版本方案。"""
         proj = _resolve_project(pid)
+        if payload.version_scheme is not None and payload.version_scheme not in ("", *protocols.VERSION_SCHEMES):
+            raise HTTPException(status_code=400, detail="未知的版本方案")
         old_path = Path(proj["path"])
         old_row = get_project(state.conn, pid) or {}
         ptype = payload.type or proj.get("type", "其他")
@@ -539,7 +561,11 @@ def create_app(state: AppState) -> FastAPI:
         upsert_project(state.conn, new_path.name, new_path.name, ptype, str(new_path),
                        description, imported=bool(proj.get("imported", False)),
                        pinned=bool(old_row.get("pinned", False)))
+        if payload.version_scheme is not None:
+            set_version_scheme(state.conn, new_path.name, payload.version_scheme)
         entry = scanner.parse_project_entry(new_path.name)
+        override = (payload.version_scheme if payload.version_scheme is not None
+                    else (old_row.get("version_scheme") or ""))
         return {
             "id": new_path.name,
             "name": new_path.name,
@@ -549,6 +575,8 @@ def create_app(state: AppState) -> FastAPI:
             "description": description,
             "imported": bool(proj.get("imported", False)),
             "pinned": bool(old_row.get("pinned", False)),
+            "version_scheme": protocols.version_scheme_for(ptype, override),
+            "version_scheme_set": override,
         }
 
     @api.get("/github/auth")

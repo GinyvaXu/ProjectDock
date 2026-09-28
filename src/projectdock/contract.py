@@ -8,7 +8,7 @@ import os
 import subprocess
 from pathlib import Path
 
-from . import presets
+from . import presets, protocols
 from .ailog import recent_summary
 from .versioning import parse_changelog, read_version
 
@@ -20,8 +20,13 @@ def contract_for(ptype: str, spec: dict, title: str, description: str = "") -> s
     dirs = "、".join(spec.get("dirs", [])) or "（无固定目录）"
     files = "、".join(spec.get("files", {}).keys()) or "（无固定文件）"
     git = bool(spec.get("git", True))
+    scheme = protocols.version_scheme_for(ptype)
     if ptype == "软件":
         return _software(title, description, dirs, files, git)
+    if scheme == "archive":
+        return _archive(title, description, dirs, files, git)
+    if scheme == "upstream":
+        return _upstream(title, description, dirs, files)
     if git:
         return _generic(title, description, dirs, files)
     return _lite(title, description, dirs, files)
@@ -141,6 +146,62 @@ def _lite(title: str, description: str, dirs: str, files: str) -> str:
 ## 管理要求
 - 文档按文件类型归类，版本以文件名/目录时间顺序区分；不删除历史版本
 - 重要修改先与用户商讨
+
+## AI 操作日志（强制）
+- 每个任务完成后必须主动写 AI 操作日志到 `logs/ai/`（JSON：ts / agent / action / result / summary / details）
+- 快捷方式：`python -m projectdock.cli log <项目名> --agent <你的名字> --action "..." --result done --summary "..."`
+"""
+
+
+def _archive(title: str, description: str, dirs: str, files: str, git: bool) -> str:
+    """日期归档型契约（资料系统 / 本地应用）。"""
+    git_rules = (
+        "- 单 main 分支直接开发；提交前缀：feat: / fix: / docs: / chore:\n"
+        "- **不主动 push**；推送由用户明确要求后进行"
+    ) if git else "- 该项目不使用 git 管理，请直接操作文件"
+    return f"""# AGENTS.md — 项目契约（由 ProjectDock 生成）
+
+{title}：{description or "（暂无描述）"}。本项目由 ProjectDock 管理（日期归档型），以下是必须遵守的规范。
+
+## 项目结构
+- 目录结构约定：{dirs}
+- 骨架文件约定：{files}
+
+## 版本归档（强制）
+- 本类型不强制语义化版本号；版本以「归档批次」体现：`archive/v<序号>_<YYYYMMDD>/`
+- 覆盖任何文件/数据前先把旧版移入同级 `_archive/`，命名为 `<原名去扩展名>_v<n>.<扩展名>`（不重复拼接日期）
+- `dist/` 存放对外交付物（资料包等），不按构建产物处理
+- 归档**只增不删、不覆盖**；日期统一 `YYYYMMDD`；文件名不含空格
+
+## Git 规范
+{git_rules}
+
+## 确认策略（强制）
+- 删除文件 / 归档移动 / 推送 GitHub 前必须先获得用户明确同意
+
+## AI 操作日志（强制）
+- 每个任务完成后必须主动写 AI 操作日志到 `logs/ai/`（JSON：ts / agent / action / result / summary / details）
+- 快捷方式：`python -m projectdock.cli log <项目名> --agent <你的名字> --action "..." --result done --summary "..."`
+
+## 任务流程
+- 重要修改先与用户商讨（grill）；执行前先备份；每轮结束交付报告
+"""
+
+
+def _upstream(title: str, description: str, dirs: str, files: str) -> str:
+    """外部克隆仓库契约（上游维护，只读版本）。"""
+    return f"""# AGENTS.md — 项目契约（由 ProjectDock 生成）
+
+{title}：{description or "（暂无描述）"}。本项目为外部克隆仓库，由 ProjectDock 纳管（上游版本只读展示）。
+
+## 约定
+- **遵循上游仓库规范**（README / CONTRIBUTING / 上游构建流程），不要用本地规范覆盖上游约定
+- 上游版本号（VERSION / CHANGELOG）只读展示，不强制本地维护
+- 修改尽量走上游流程（分支 / PR）；不擅自改写历史、不擅自添加远程
+
+## Git 规范
+- **不主动 push**；推送由用户明确要求后进行
+- 本地实验性改动请先与用户商讨
 
 ## AI 操作日志（强制）
 - 每个任务完成后必须主动写 AI 操作日志到 `logs/ai/`（JSON：ts / agent / action / result / summary / details）

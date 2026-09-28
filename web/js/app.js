@@ -31,12 +31,17 @@
     sort: "pinned",
     console: null,
     drawerSeq: 0,
+    unmanaged: [],
+    namingStyles: null,
   };
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const fmtSize = (n) => (n == null ? "" : n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : n >= 1024 ? (n / 1024).toFixed(1) + " KB" : n + " B");
-  const TYPE_ICONS = { "软件": "💻", "网站": "🌐", "游戏": "🎮", "PPT": "📊", "文稿": "📄", "脚本": "🐍", "其他": "📁" };
+  const TYPE_ICONS = { "软件": "💻", "网站": "🌐", "游戏": "🎮", "PPT": "📊", "文稿": "📄", "脚本": "🐍", "其他": "📁",
+    "文档加工": "📚", "资料系统": "🗃️", "本地应用": "🧰", "克隆仓库": "🐙", "工具脚本": "🔧" };
+  const SCHEME_LABELS = { semver: "语义化版本", archive: "日期归档", upstream: "上游只读", none: "不追踪版本" };
+  const schemeLabel = (s) => SCHEME_LABELS[s] || s || "";
   const typeIcon = (p) => TYPE_ICONS[p.type] || "📁";
   function logoHTML(p) {
     const emoji = "<span class='logo-fallback'>" + typeIcon(p) + "</span>";
@@ -67,6 +72,7 @@
     fillAgentSelect();
     renderSidebar();
     renderGrid();
+    loadUnmanaged();
     bindEvents();
     updateViewButtons();
   }
@@ -203,6 +209,51 @@
       addSection("", list);
     }
     grid.appendChild(frag);
+  }
+
+  /* ============ 未纳管文件夹 ============ */
+  async function loadUnmanaged() {
+    try {
+      S.unmanaged = await api("/api/projects/unmanaged");
+    } catch (err) {
+      S.unmanaged = [];
+    }
+    renderUnmanaged();
+  }
+
+  function renderUnmanaged() {
+    const box = $("unmanagedBox");
+    if (!box) return;
+    const list = S.unmanaged || [];
+    if (!list.length || S.view === "console") {
+      box.hidden = true;
+      box.innerHTML = "";
+      return;
+    }
+    box.hidden = false;
+    box.innerHTML =
+      "<div class='unmanaged-head'><span>📂 未纳管文件夹</span><span class='section-count'>" + list.length + "</span>" +
+      "<span style='font-weight:400;color:var(--text-3)'>不符合当前命名风格，可一键导入管理</span></div>" +
+      list.map((u) =>
+        "<div class='unmanaged-row'><span class='u-name'>" + esc(u.name) + "</span>" +
+        "<span class='u-path'>" + esc(u.path) + "</span><span class='spacer'></span>" +
+        "<button class='btn btn-sm btn-primary' data-import-path='" + esc(u.path) + "'>导入管理</button></div>"
+      ).join("");
+    box.querySelectorAll("[data-import-path]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const row = btn.closest(".unmanaged-row");
+        const name = row ? (row.querySelector(".u-name") || {}).textContent : "";
+        btn.disabled = true;
+        try {
+          await api("/api/projects/import", { method: "POST", body: { path: btn.dataset.importPath, type: "其他", description: "" } });
+          toast("已导入：" + name);
+          await refresh();
+        } catch (err) {
+          btn.disabled = false;
+          toast(err.message, "err");
+        }
+      });
+    });
   }
 
   function setFilter(type) {
@@ -538,6 +589,9 @@
     const sel = $("editType");
     sel.innerHTML = S.presets.map((p) => "<option value='" + esc(p.type) + "'>" + esc(p.label) + "</option>").join("");
     sel.value = S.current.type;
+    if (form.elements.version_scheme) {
+      form.elements.version_scheme.value = S.current.version_scheme_set || "";
+    }
     openModal("edit");
   }
 
@@ -549,6 +603,7 @@
       name: form.elements.name.value.trim(),
       type: form.elements.type.value,
       description: form.elements.description.value.trim(),
+      version_scheme: form.elements.version_scheme ? form.elements.version_scheme.value : "",
     };
     if (!payload.name) { toast("项目名称不能为空", "err"); return; }
     const oldId = S.current.id;
@@ -1089,6 +1144,7 @@
     $("grid").hidden = true;
     $("empty").hidden = true;
     $("console").hidden = false;
+    renderUnmanaged();
     renderConsole();
   }
 
@@ -1100,6 +1156,7 @@
     $("grid").hidden = false;
     updateViewButtons();
     renderGrid();
+    renderUnmanaged();
   }
 
   function setView(mode) {
@@ -1408,6 +1465,7 @@
       return;
     }
     const versions = S.versions || { version: null, changelog: [], artifacts: { versions: [], dist: [] }, has_versions_dir: false, has_dist_dir: false };
+    const scheme = versions.scheme || "semver";
     const verBlock = (title, inner, openDefault) =>
       "<div class='ver-block collapsible" + (openDefault ? "" : " collapsed") + "'>" +
         "<div class='ver-head' role='button' tabindex='0'><span class='caret'>▶</span><h4>" + title + "</h4></div>" +
@@ -1415,14 +1473,26 @@
       "</div>";
 
     let html = "";
-    html += "<div style='display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px'>" +
+    html += "<div class='ver-head-row'>" +
+      "<span class='ver-scheme-badge'>版本方案：" + esc(schemeLabel(scheme)) + "</span>" +
+      "<span class='spacer'></span>" +
       "<button class='btn btn-sm' id='btnToggleAll'>全部展开</button>" +
-      "<button class='btn btn-primary btn-sm' id='btnReleaseWizard'>发布向导</button></div>";
+      (scheme === "semver" ? "<button class='btn btn-primary btn-sm' id='btnReleaseWizard'>发布向导</button>" : "") +
+      "</div>";
 
-    html += verBlock("当前版本",
-      "<div class='overview-hero' style='margin-bottom:0'>" +
-        (versions.version ? "<div class='ov-version'>v" + esc(versions.version) + "</div>" : "<div class='ov-sub'>项目根目录没有 VERSION 文件</div>") +
-      "</div>", true);
+    let curInner;
+    if (scheme === "archive") {
+      curInner = "<div class='ov-sub'>日期归档型：版本以归档批次体现（archive/v&lt;序号&gt;_&lt;YYYYMMDD&gt;）</div>";
+    } else if (scheme === "none") {
+      curInner = "<div class='ov-sub'>该类型不追踪版本（可在「编辑信息」中切换版本方案）</div>";
+    } else if (scheme === "upstream") {
+      curInner = versions.version
+        ? "<div class='ov-version'>v" + esc(versions.version) + "</div><div class='ov-sub'>上游仓库版本（只读展示）</div>"
+        : "<div class='ov-sub'>上游仓库：未发现 VERSION 文件（只读展示）</div>";
+    } else {
+      curInner = versions.version ? "<div class='ov-version'>v" + esc(versions.version) + "</div>" : "<div class='ov-sub'>项目根目录没有 VERSION 文件</div>";
+    }
+    html += verBlock("当前版本", "<div class='overview-hero' style='margin-bottom:0'>" + curInner + "</div>", true);
 
     let clHtml = "";
     if (versions.changelog.length) {
@@ -1435,7 +1505,8 @@
         ).join("") + "</div>"
       ).join("") + "</div>";
     } else {
-      clHtml = "<div class='build-log'>没有找到 CHANGELOG.md</div>";
+      clHtml = "<div class='build-log'>" + ((scheme === "archive" || scheme === "none")
+        ? "（本类型不追踪 CHANGELOG；归档批次见「构建产物」）" : "没有找到 CHANGELOG.md") + "</div>";
     }
     html += verBlock("更新日志", clHtml, false);
 
@@ -1443,25 +1514,34 @@
     const latest = artifacts.latest || [];
     let artHtml = "";
     if (!latest.length && !artifacts.versions.length && !artifacts.dist.length) {
-      artHtml = "<div class='build-log'>没有发现 versions/ 或 dist/ 构建产物</div>";
+      artHtml = "<div class='build-log'>" + (scheme === "archive"
+        ? "没有发现 archive/ 或 versions/ 归档目录" : "没有发现 versions/ 或 dist/ 构建产物") + "</div>";
     } else {
       if (latest.length) {
-        artHtml += "<div class='ver-head latest-head'><h4>最新构建</h4><span class='latest-note'>按修改时间排序（版本目录 + 根 dist）</span></div>";
+        artHtml += "<div class='ver-head latest-head'><h4>" + (scheme === "archive" ? "最新归档与交付物" : "最新构建") + "</h4>" +
+          "<span class='latest-note'>按修改时间排序（" + (scheme === "archive" ? "归档目录 + dist" : "版本目录 + 根 dist") + "）</span></div>";
         if (artifacts.root_dist_newer) {
           artHtml += "<div class='note-warn'>⚠ 根目录 dist/installer/build 存在比已归档版本更新的构建（未归档）</div>";
         }
-        artHtml += latest.map((f) =>
-          "<div class='artifact'><span class='a-name'>" + esc(f.name) + "</span>" +
-          (f.source === "versions" ? "<span class='src-badge archived'>" + esc(f.version || "") + "</span>" : "<span class='src-badge unarchived'>未归档</span>") +
-          "<span class='a-size'>" + fmtSize(f.size) + "</span><span class='spacer'></span>" +
-          "<button class='btn btn-sm' data-open='" + esc(f.path) + "'>打开</button>" +
-          "<button class='btn btn-sm' data-reveal='" + esc(f.path) + "'>位置</button>" +
-          "<button class='btn btn-sm' data-copy='" + esc(f.path) + "'>复制</button></div>"
-        ).join("");
+        artHtml += latest.map((f) => {
+          let badge;
+          if (f.source === "versions" || f.source === "archive") {
+            badge = "<span class='src-badge archived'>" + esc(f.version || "") + "</span>";
+          } else if (scheme === "archive") {
+            badge = "<span class='src-badge'>交付物</span>";
+          } else {
+            badge = "<span class='src-badge unarchived'>未归档</span>";
+          }
+          return "<div class='artifact'><span class='a-name'>" + esc(f.name) + "</span>" + badge +
+            "<span class='a-size'>" + fmtSize(f.size) + "</span><span class='spacer'></span>" +
+            "<button class='btn btn-sm' data-open='" + esc(f.path) + "'>打开</button>" +
+            "<button class='btn btn-sm' data-reveal='" + esc(f.path) + "'>位置</button>" +
+            "<button class='btn btn-sm' data-copy='" + esc(f.path) + "'>复制</button></div>";
+        }).join("");
       }
       artifacts.versions.forEach((v) => {
         artHtml += "<div class='cl-entry'><h5>" + esc(v.name) + (v.has_src ? " · 含源码快照" : "") + "</h5>" +
-          "<div class='artifact'><span class='a-name'>版本目录</span><span class='spacer'></span>" +
+          "<div class='artifact'><span class='a-name'>" + (scheme === "archive" ? "归档目录" : "版本目录") + "</span><span class='spacer'></span>" +
           "<button class='btn btn-sm' data-open='" + esc(v.path) + "'>打开文件夹</button>" +
           "<button class='btn btn-sm' data-reveal='" + esc(v.path) + "'>位置</button></div>";
         if (v.artifacts.length) {
@@ -1473,13 +1553,14 @@
             "<button class='btn btn-sm' data-copy='" + esc(f.path) + "'>复制</button></div>"
           ).join("");
         } else {
-          artHtml += "<div class='build-log' style='margin-top:6px'>（无 dist 产物）</div>";
+          artHtml += "<div class='build-log' style='margin-top:6px'>" + (scheme === "archive" ? "（目录为空）" : "（无 dist 产物）") + "</div>";
         }
         artHtml += "</div>";
       });
       if (artifacts.dist.length) {
-        artHtml += "<div class='ver-head latest-head'><h4>未归档构建（项目根目录 dist/installer/build）</h4>" +
-          "<button class='btn btn-sm' id='btnGoCompliance'>去合规归档</button></div>";
+        const deliverable = scheme === "archive";
+        artHtml += "<div class='ver-head latest-head'><h4>" + (deliverable ? "交付物（dist/）" : "未归档构建（项目根目录 dist/installer/build）") + "</h4>" +
+          (deliverable ? "" : "<button class='btn btn-sm' id='btnGoCompliance'>去合规归档</button>") + "</div>";
         artHtml += artifacts.dist.map((f) =>
           "<div class='artifact'><span class='a-name'>" + esc(f.name) + "</span><span class='a-size'>" + fmtSize(f.size) + "</span>" +
           "<span class='spacer'></span>" +
@@ -2201,9 +2282,53 @@ async function runBuild(script) {
     form.elements.update_repo.value = S.settings.update_repo || "GinyvaXu/ProjectDock";
     const cur = $("updateCurrent");
     if (cur) cur.textContent = S.appVersion || "";
+    loadNamingStyleOptions();
     renderTypeTabsEditor();
     openModal("settings");
     loadGithubAuth();
+  }
+
+  /* ============ 命名规范风格（设置） ============ */
+  function styleLabel(id) {
+    if (!S.namingStyles) return id || "";
+    if (id === "auto") return "自动识别";
+    const s = (S.namingStyles.styles || []).find((x) => x.id === id);
+    return s ? s.label : id;
+  }
+
+  function renderNamingHint() {
+    const hint = $("namingStyleHint");
+    const sel = $("namingStyleSelect");
+    if (!hint || !sel || !S.namingStyles) return;
+    const v = sel.value;
+    if (v === "auto") {
+      hint.textContent = "自动识别：按资料库现有项目文件夹选择风格（当前检测：" + styleLabel(S.namingStyles.detected) + "）。";
+      return;
+    }
+    const s = (S.namingStyles.styles || []).find((x) => x.id === v);
+    hint.textContent = s ? s.description + "；示例：" + s.example : "";
+  }
+
+  async function loadNamingStyleOptions() {
+    const form = $("settingsForm");
+    const sel = form.elements.naming_style;
+    if (!sel) return;
+    try {
+      S.namingStyles = await api("/api/naming/styles");
+    } catch (err) { return; }
+    sel.innerHTML = "";
+    const autoOpt = document.createElement("option");
+    autoOpt.value = "auto";
+    autoOpt.textContent = "自动识别（当前检测：" + styleLabel(S.namingStyles.detected) + "）";
+    sel.appendChild(autoOpt);
+    (S.namingStyles.styles || []).forEach((s) => {
+      const o = document.createElement("option");
+      o.value = s.id;
+      o.textContent = s.label + "（示例：" + s.example + "）";
+      sel.appendChild(o);
+    });
+    sel.value = S.settings.naming_style || "auto";
+    renderNamingHint();
   }
 
   async function saveSettings(ev) {
@@ -2225,20 +2350,21 @@ async function runBuild(script) {
       confirmPolicy[k] = !!form.elements["policy_" + k].checked;
     });
     try {
-      S.settings = await api("/api/settings", {
-        method: "PUT",
-        body: {
-          root: form.elements.root.value,
-          agent: form.elements.agent.value,
-          theme: form.elements.theme.value,
-          github_auto: form.elements.github_auto.checked,
-          github_visibility: form.elements.github_visibility.value,
-          backup: form.elements.backup.checked,
-          type_tabs: typeTabs,
-          confirm_policy: confirmPolicy,
-          update_repo: form.elements.update_repo.value.trim(),
-        },
-      });
+      const body = {
+        root: form.elements.root.value,
+        agent: form.elements.agent.value,
+        theme: form.elements.theme.value,
+        github_auto: form.elements.github_auto.checked,
+        github_visibility: form.elements.github_visibility.value,
+        backup: form.elements.backup.checked,
+        type_tabs: typeTabs,
+        confirm_policy: confirmPolicy,
+        update_repo: form.elements.update_repo.value.trim(),
+      };
+      const nsEl = form.elements.naming_style;
+      if (nsEl && nsEl.value) body.naming_style = nsEl.value;
+      S.settings = await api("/api/settings", { method: "PUT", body });
+      S.namingStyles = null;  // 风格可能变化（含自动识别结果），下次打开重新拉取
       applyTheme(S.settings.theme);
       closeModal("settings");
       toast("设置已保存");
@@ -2416,6 +2542,7 @@ async function runBuild(script) {
     S.projects = await api("/api/projects");
     renderSidebar();
     renderGrid();
+    loadUnmanaged();
   }
 
   function toast(msg, kind) {
@@ -2501,6 +2628,8 @@ async function runBuild(script) {
     $("newForm").addEventListener("submit", createProject);
     $("importForm").addEventListener("submit", importProject);
     $("settingsForm").addEventListener("submit", saveSettings);
+    const namingSel = $("namingStyleSelect");
+    if (namingSel) namingSel.addEventListener("change", renderNamingHint);
     const btnGhRefresh = $("btnGhRefresh");
     if (btnGhRefresh) btnGhRefresh.addEventListener("click", loadGithubAuth);
     const btnGhLogin = $("btnGhLogin");

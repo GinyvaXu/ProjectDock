@@ -49,6 +49,7 @@
       <button class="btn btn-primary" id="btnNewProject"><span>＋</span> 新建项目</button>
     </header>
     <section class="grid" id="grid"></section>
+    <section class="unmanaged" id="unmanagedBox" hidden></section>
     <section class="console" id="console" hidden></section>
     <section class="empty" id="empty" hidden>
       <div class="empty-ico" id="emptyIco">▢</div>
@@ -145,6 +146,15 @@
       <form id="editForm">
         <label class="field"><span>项目名称</span><input name="name" maxlength="60" placeholder="项目标题（变更会重命名文件夹）"></label>
         <label class="field"><span>项目类型</span><select name="type" id="editType"></select></label>
+        <label class="field"><span>版本方案（缺省跟随类型协议）</span>
+          <select name="version_scheme" id="editScheme">
+            <option value="">默认（跟随类型）</option>
+            <option value="semver">语义化版本（VERSION / CHANGELOG / versions）</option>
+            <option value="archive">日期归档（archive/vN_日期 + versions + dist 交付物）</option>
+            <option value="upstream">上游只读（外部克隆仓库）</option>
+            <option value="none">不追踪版本</option>
+          </select>
+        </label>
         <label class="field"><span>描述</span><textarea name="description" rows="3"></textarea></label>
         <p class="edit-hint">名称 / 类型变更会同步重命名项目文件夹（保留编号前缀）；描述与图标信息保存在 ProjectDock 中。</p>
         <footer class="modal-foot">
@@ -175,6 +185,10 @@
       <header class="modal-head"><h3>设置</h3><button class="icon-btn" data-close="settings">✕</button></header>
       <form id="settingsForm">
         <label class="field"><span>管理根目录</span><input name="root" placeholder="项目文件夹所在目录"></label>
+        <label class="field"><span>命名规范风格（项目文件夹命名；自由命名可纳管任意文件夹）</span>
+          <select name="naming_style" id="namingStyleSelect"></select>
+          <div class="preset-hint" id="namingStyleHint"></div>
+        </label>
         <label class="field"><span>AI 后端</span><select name="agent"><option value="claude">Claude Code</option><option value="pi">Pi</option></select></label>
         <label class="field"><span>主题</span><select name="theme"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></label>
         <label class="check"><input type="checkbox" name="github_auto" checked><span>新建项目自动创建 GitHub 仓库并推送</span></label>

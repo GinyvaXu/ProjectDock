@@ -114,6 +114,13 @@ def system_prompt(project_name: str, project_path: str, type_info: dict | None =
         lines.append(f"项目类型：{type_info.get('label') or type_info.get('name')}。")
         if structure:
             lines.append("；".join(structure) + "。请遵循这些结构约定进行管理。")
+        scheme = type_info.get("version_scheme")
+        if scheme == "archive":
+            lines.append("版本方案：日期归档型 —— 归档批次放 `archive/v<序号>_<YYYYMMDD>/`；`dist/` 是交付物，不按构建产物处理；覆盖前先归档（只增不删）。")
+        elif scheme == "upstream":
+            lines.append("版本方案：上游仓库只读 —— VERSION/CHANGELOG 只读展示，不擅自改版本号、不擅自发布或改写历史。")
+        elif scheme == "none":
+            lines.append("版本方案：不追踪版本 —— 不做版本号 / CHANGELOG 操作（除非用户明确要求）。")
     hist = render_history(history)
     if hist:
         lines.append("")

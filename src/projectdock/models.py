@@ -117,6 +117,7 @@ class ProjectUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=60)
     type: str | None = None
     description: str | None = None
+    version_scheme: str | None = None  # ''=跟随类型默认 / semver / archive / upstream / none
 
 
 class GithubAuthPayload(BaseModel):

@@ -11,10 +11,14 @@ from projectdock.runner import Job
 def test_presets_endpoint(client):
     presets = client.get("/api/presets").json()
     types = [p["type"] for p in presets]
-    assert types == ["软件", "网站", "游戏", "PPT", "文稿", "脚本", "其他"]
+    assert types == ["软件", "网站", "游戏", "PPT", "文稿", "脚本", "其他",
+                     "文档加工", "资料系统", "本地应用", "克隆仓库", "工具脚本"]
     software = next(p for p in presets if p["type"] == "软件")
     assert software["git"] is True
     assert "VERSION" in software["files"]
+    assert software["version_scheme"] == "semver"
+    doc = next(p for p in presets if p["type"] == "文档加工")
+    assert doc["version_scheme"] == "none"
 
 
 def test_agents_endpoint(client):

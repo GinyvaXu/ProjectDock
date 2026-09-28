@@ -8,7 +8,8 @@ IDENTITY = {"name": "Tester", "email": "tester@example.com"}
 
 
 def test_presets_cover_all_types():
-    assert set(PRESETS) == {"软件", "网站", "游戏", "PPT", "文稿", "脚本", "其他"}
+    assert set(PRESETS) == {"软件", "网站", "游戏", "PPT", "文稿", "脚本", "其他",
+                            "文档加工", "资料系统", "本地应用", "克隆仓库", "工具脚本"}
 
 
 def test_apply_preset_software_creates_files_and_git(tmp_path):

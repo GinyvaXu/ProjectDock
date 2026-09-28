@@ -44,12 +44,18 @@ class ParsedProject:
 
 
 class NamingStyle:
-    """一种项目文件夹命名风格。子类实现 parse / make。"""
+    """一种项目文件夹命名风格。子类实现 parse / make。
+
+    - strict=True：参与扫描/未纳管判定（默认）；
+    - auto_detect=True：参与 auto 自动识别计数（free 不参与，避免吞掉全部文件夹）。
+    """
 
     id: str = ""
     label: str = ""
     description: str = ""
     example: str = ""
+    strict: bool = True
+    auto_detect: bool = True
 
     def parse(self, name: str) -> ParsedProject | None:  # pragma: no cover - 接口
         raise NotImplementedError
@@ -59,7 +65,8 @@ class NamingStyle:
 
     def as_dict(self) -> dict:
         return {"id": self.id, "label": self.label,
-                "description": self.description, "example": self.example}
+                "description": self.description, "example": self.example,
+                "strict": self.strict, "auto_detect": self.auto_detect}
 
 
 class ClassicStyle(NamingStyle):
@@ -112,8 +119,27 @@ class LocalStyle(NamingStyle):
         return f"Project{index_raw}-{title}"
 
 
+class FreeStyle(NamingStyle):
+    """自由命名：任意文件夹名（排除点开头）都可纳管；标题＝文件夹名，创建不加序号。"""
+
+    id = "free"
+    label = "自由命名"
+    description = "任意文件夹名可纳管（排除点开头）；标题即文件夹名，创建/重命名不加序号"
+    example = "ProjectDock - 本地项目管理器部署"
+    strict = False
+    auto_detect = False
+
+    def parse(self, name: str) -> ParsedProject | None:
+        if not name or name.startswith("."):
+            return None
+        return ParsedProject(self.id, 0, "", "", name)
+
+    def make(self, index_raw: str, ptype: str, title: str) -> str:
+        return title
+
+
 # 注册表：新增命名规范风格 = 在此注册一个 NamingStyle 子类实例。
-STYLES: dict[str, NamingStyle] = {s.id: s for s in (ClassicStyle(), LocalStyle())}
+STYLES: dict[str, NamingStyle] = {s.id: s for s in (ClassicStyle(), LocalStyle(), FreeStyle())}
 
 
 def style_ids() -> list[str]:
@@ -124,9 +150,18 @@ def get_style(style_id: str | None) -> NamingStyle | None:
     return STYLES.get((style_id or "").strip().lower())
 
 
-def parse_name(name: str) -> ParsedProject | None:
-    """按注册顺序尝试全部风格（扫描/导入始终兼容所有风格）。"""
+def parse_name(name: str, style_id: str | None = None, include_free: bool = False) -> ParsedProject | None:
+    """解析文件夹名。
+
+    - style_id 指定时只用该风格；
+    - 默认按注册顺序尝试「严格风格」（classic/local）；include_free=True 时兜底尝试自由风格。
+    """
+    if style_id:
+        style = get_style(style_id)
+        return style.parse(name) if style else None
     for style in STYLES.values():
+        if not style.strict and not include_free:
+            continue
         parsed = style.parse(name)
         if parsed:
             return parsed
@@ -134,8 +169,11 @@ def parse_name(name: str) -> ParsedProject | None:
 
 
 def detect_style(root: Path) -> str:
-    """按资料库现有项目文件夹识别风格；命中数最多者胜，无命中时用默认风格。"""
-    counts = {sid: 0 for sid in STYLES}
+    """按资料库现有项目文件夹识别风格；命中数最多者胜，无命中时用默认风格。
+
+    仅统计 auto_detect 风格（free 不参与，避免「任意文件夹都算命中」）。
+    """
+    counts = {sid: 0 for sid, style in STYLES.items() if style.auto_detect}
     root = Path(root)
     try:
         children = list(root.iterdir())
@@ -145,6 +183,8 @@ def detect_style(root: Path) -> str:
         if not child.is_dir():
             continue
         for sid, style in STYLES.items():
+            if not style.auto_detect:
+                continue
             if style.parse(child.name):
                 counts[sid] += 1
                 break

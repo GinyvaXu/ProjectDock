@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS projects (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     imported INTEGER NOT NULL DEFAULT 0,
-    excluded INTEGER NOT NULL DEFAULT 0
+    excluded INTEGER NOT NULL DEFAULT 0,
+    version_scheme TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS project_types (
@@ -56,6 +57,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
             conn.execute("ALTER TABLE projects ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0")
         if "pinned" not in cols:
             conn.execute("ALTER TABLE projects ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0")
+        if "version_scheme" not in cols:
+            conn.execute("ALTER TABLE projects ADD COLUMN version_scheme TEXT NOT NULL DEFAULT ''")
 
 
 def upsert_project(conn, project_id: str, name: str, ptype: str, path: str,
@@ -100,6 +103,14 @@ def set_pinned(conn, project_id: str, pinned: bool) -> None:
     with _DB_LOCK:
         conn.execute("UPDATE projects SET pinned = ?, updated_at = ? WHERE id = ?",
                      (1 if pinned else 0, now(), project_id))
+        conn.commit()
+
+
+def set_version_scheme(conn, project_id: str, scheme: str) -> None:
+    """设置项目级版本方案覆盖（'' = 跟随类型协议默认）。"""
+    with _DB_LOCK:
+        conn.execute("UPDATE projects SET version_scheme = ?, updated_at = ? WHERE id = ?",
+                     (scheme or "", now(), project_id))
         conn.commit()
 
 

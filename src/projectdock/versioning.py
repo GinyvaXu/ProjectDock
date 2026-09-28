@@ -156,11 +156,118 @@ def list_build_artifacts(project_path: Path, limit_versions: int = 10) -> dict:
     return result
 
 
-def project_version_summary(project_path: Path, changelog_limit: int = 30) -> dict:
-    return {
+def project_version_summary(project_path: Path, changelog_limit: int = 30,
+                            scheme: str = "semver", build_archive: bool = True) -> dict:
+    """版本信息汇总：按版本方案（semver / archive / upstream / none）返回。
+
+    - semver  ：VERSION + CHANGELOG + versions/vX.Y.Z + 根 dist（未归档构建）
+    - archive ：archive/ 与 versions/ 子目录 + dist 交付物（不标未归档）
+    - upstream：同 semver 读取（只读展示），不标未归档
+    - none    ：不追踪版本（返回空结构）
+    """
+    if scheme == "archive":
+        return _archive_summary(project_path)
+    if scheme == "none":
+        return {
+            "version": None,
+            "changelog": [],
+            "scheme": "none",
+            "artifacts": {"versions": [], "dist": [], "latest": [], "latest_version": None},
+            "has_versions_dir": (project_path / "versions").is_dir(),
+            "has_dist_dir": (project_path / "dist").is_dir(),
+            "root_dist_newer": False,
+        }
+    data = {
         "version": read_version(project_path),
         "changelog": parse_changelog(project_path, changelog_limit),
+        "scheme": scheme,
         "artifacts": list_build_artifacts(project_path),
         "has_versions_dir": (project_path / "versions").is_dir(),
         "has_dist_dir": (project_path / "dist").is_dir(),
+    }
+    if not build_archive:
+        data["artifacts"]["root_dist_newer"] = False
+    return data
+
+
+def list_archive_entries(project_path: Path, limit: int = 30) -> list[dict]:
+    """归档型版本目录：archive/ 与 versions/ 下的子目录（按 日期+版本 倒序），内含一层产物。"""
+    entries: list[dict] = []
+    for base_name in ("versions", "archive"):
+        base = project_path / base_name
+        if not base.is_dir():
+            continue
+        try:
+            children = sorted(base.iterdir(), key=lambda p: _archive_sort_key(p.name), reverse=True)
+        except OSError:
+            continue
+        for d in children[:limit]:
+            if not d.is_dir() or d.name.startswith("."):
+                continue
+            artifacts: list[dict] = []
+            try:
+                items = sorted(d.iterdir())
+            except OSError:
+                items = []
+            for f in items:
+                if f.name.startswith("."):
+                    continue
+                artifacts.append(_entry_stat(f, "archive", d.name))
+            entries.append({"name": d.name, "path": str(d), "artifacts": artifacts,
+                            "has_src": (d / "src").is_dir(), "source": base_name})
+    return entries
+
+
+_ARCHIVE_NAME_RE = re.compile(r"^v?([\d.]+)_(\d{8})$")
+
+
+def _archive_sort_key(name: str) -> tuple:
+    """归档目录排序键：`v<版本>_<YYYYMMDD>` 按 日期 → 版本号 自然排序；其它命名靠后按名称。"""
+    m = _ARCHIVE_NAME_RE.match(name)
+    if m:
+        parts = tuple(int(x) for x in m.group(1).split(".") if x)
+        return (1, int(m.group(2)), parts, name.lower())
+    return (0, 0, (), name.lower())
+
+
+def _deliverable_items(project_path: Path) -> list[dict]:
+    """archive 方案的交付物：根目录 dist/installer/build 下全部可见条目（文件+目录）。"""
+    out: list[dict] = []
+    seen: set[tuple] = set()
+    for sub in ROOT_ARTIFACT_DIRS:
+        subdir = project_path / sub
+        if not subdir.is_dir():
+            continue
+        try:
+            children = sorted(subdir.iterdir())
+        except OSError:
+            continue
+        for f in children:
+            if f.name.startswith("."):
+                continue
+            e = _entry_stat(f, sub, None)
+            key = (e["name"], e["size"])
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(e)
+    return out
+
+
+def _archive_summary(project_path: Path) -> dict:
+    entries = list_archive_entries(project_path)
+    dist_items = _deliverable_items(project_path)
+    latest = sorted(
+        [a for e in entries for a in e["artifacts"]] + dist_items,
+        key=lambda e: e.get("mtime") or 0.0, reverse=True,
+    )[:12]
+    return {
+        "version": None,
+        "changelog": [],
+        "scheme": "archive",
+        "artifacts": {"versions": entries, "dist": dist_items, "latest": latest,
+                      "latest_version": entries[0]["name"] if entries else None},
+        "has_versions_dir": (project_path / "versions").is_dir(),
+        "has_dist_dir": (project_path / "dist").is_dir(),
+        "root_dist_newer": False,
     }

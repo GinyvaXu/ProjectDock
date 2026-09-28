@@ -6,7 +6,7 @@ from pathlib import Path
 from projectdock import naming
 from projectdock.config import Settings
 from projectdock.naming import make_folder_name, next_index, parse_name, resolve_style, sanitize_title
-from projectdock.scanner import find_next_index, parse_project_dir, parse_project_entry, scan_root
+from projectdock.scanner import find_next_index, list_unmanaged, parse_project_dir, parse_project_entry, scan_root
 
 
 # ---------- 解析 ----------
@@ -131,6 +131,34 @@ def test_default_root_detects_all_styles(tmp_path):
     assert _detect_library_root(sub / "file.py") == lib
     (lib / "Project1-大学").rename(lib / "项目1-软件-大学")  # 经典风格
     assert _detect_library_root(sub / "file.py") == lib
+
+
+# ---------- free 自由命名风格 ----------
+
+def test_free_style_parse_and_detect(tmp_path):
+    (tmp_path / "ProjectDock - 本地项目管理器部署").mkdir()
+    (tmp_path / "Project1-XX").mkdir()
+    (tmp_path / ".hidden").mkdir()
+    free = naming.STYLES["free"]
+    assert free.parse("ProjectDock - 本地项目管理器部署").title == "ProjectDock - 本地项目管理器部署"
+    assert free.parse(".hidden") is None
+    assert parse_name("ProjectDock - 本地项目管理器部署") is None  # 默认不含 free
+    got = parse_name("ProjectDock - 本地项目管理器部署", include_free=True)
+    assert got is not None and got.style == "free"
+    assert naming.detect_style(tmp_path) == "local"  # free 不参与自动识别
+    assert resolve_style(tmp_path, "free") == "free"
+    assert make_folder_name(tmp_path, "其他", "新文件夹", style_id="free") == "新文件夹"
+
+
+def test_scan_root_free_and_unmanaged(tmp_path):
+    (tmp_path / "Project1-XX").mkdir()
+    (tmp_path / "任意文件夹").mkdir()
+    (tmp_path / ".hidden").mkdir()
+    assert [p["name"] for p in scan_root(tmp_path)] == ["Project1-XX"]
+    assert [u["name"] for u in list_unmanaged(tmp_path)] == ["任意文件夹"]
+    free = scan_root(tmp_path, style_id="free")
+    assert {p["name"] for p in free} == {"Project1-XX", "任意文件夹"}
+    assert list_unmanaged(tmp_path, style_id="free") == []
 
 
 # ---------- API ----------

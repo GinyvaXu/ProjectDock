@@ -12,50 +12,22 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from . import presets
+from . import presets, protocols
 from .versioning import read_version
 
 BUILD_EXT = {".exe", ".msi", ".msix", ".appx", ".appimage", ".deb", ".rpm", ".dmg", ".pkg", ".nupkg", ".whl"}
 BUILD_NAME_RE = re.compile(r"(debug|release|portable|setup|installer|uninstall|v?\d+\.\d+)", re.IGNORECASE)
 SKIP_NAMES = {".build_version", "error_log.txt", "crash.log"}
 
-# ---- 各类型的必需项与建议项 ----
-_REQUIRED = {
-    "软件": [
-        {"key": "readme", "label": "README.md 项目说明", "kind": "file", "name": "README.md"},
-        {"key": "version", "label": "VERSION 文件（版本号唯一来源）", "kind": "file", "name": "VERSION"},
-        {"key": "changelog", "label": "CHANGELOG.md 更新日志", "kind": "file", "name": "CHANGELOG.md"},
-        {"key": "techstack", "label": "TECHSTACK.md 技术栈文档", "kind": "file", "name": "TECHSTACK.md"},
-        {"key": "gitignore", "label": ".gitignore 忽略规则", "kind": "file", "name": ".gitignore"},
-        {"key": "git", "label": "Git 仓库", "kind": "git"},
-    ],
-}
-_GIT_TYPES = {"网站", "游戏", "脚本", "其他"}
-_SUGGESTED = {
-    "软件": [
-        {"key": "contract", "label": "AGENTS.md 项目契约", "kind": "file", "name": "AGENTS.md"},
-        {"key": "versions", "label": "versions/ 版本归档目录", "kind": "dir", "name": "versions"},
-        {"key": "build_script", "label": "构建脚本（build*.py / 打包.bat）", "kind": "pattern", "patterns": ("build*.py", "打包.bat")},
-        {"key": "src", "label": "src/ 源码目录", "kind": "dir", "name": "src"},
-        {"key": "tests", "label": "tests/ 测试目录", "kind": "dir", "name": "tests"},
-    ],
-}
-
 
 def required_items(ptype: str) -> list[dict]:
-    if ptype == "软件":
-        return list(_REQUIRED["软件"])
-    if ptype in _GIT_TYPES:
-        return [
-            {"key": "readme", "label": "README.md 项目说明", "kind": "file", "name": "README.md"},
-            {"key": "gitignore", "label": ".gitignore 忽略规则", "kind": "file", "name": ".gitignore"},
-            {"key": "git", "label": "Git 仓库", "kind": "git"},
-        ]
-    return [{"key": "readme", "label": "README.md 项目说明", "kind": "file", "name": "README.md"}]
+    """合规必需项（来自管理协议；自定义类型走宽松回退）。"""
+    return protocols.required_items(ptype)
 
 
 def suggested_items(ptype: str) -> list[dict]:
-    return list(_SUGGESTED.get(ptype, []))
+    """合规建议项（来自管理协议）。"""
+    return protocols.suggested_items(ptype)
 
 
 def check_item(project_path: Path, item: dict) -> tuple[bool, str]:
@@ -113,6 +85,7 @@ def standard_info(ptype: str) -> dict:
         "dirs": list(spec.get("dirs", [])) if spec else [],
         "files": list(spec.get("files", {})) if spec else [],
         "git": bool(spec.get("git", True)) if spec else False,
+        "version_scheme": protocols.version_scheme_for(ptype),
         "required": [i["label"] for i in required_items(ptype)],
         "suggested": [i["label"] for i in suggested_items(ptype)],
     }
@@ -146,34 +119,36 @@ def check_compliance(project_path: Path, ptype: str) -> dict:
                 "detail": "按该类型规范生成 AGENTS.md（AI agent 对接契约，含版本/git/日志要求）",
                 "destructive": False,
             })
-    dist_dir = project_path / "dist"
-    candidates = detect_build_artifacts(dist_dir)
-    if candidates:
-        rels = [str(c.relative_to(dist_dir)) for c in candidates]
-        actions.append({
-            "key": "archive_dist",
-            "label": "归档根目录 dist/ 构建产物到 versions/ 版本目录",
-            "detail": "将移动 " + str(len(rels)) + " 个构建产物（移动而非删除，目标已存在时跳过不覆盖）：" + "、".join(rels[:12]) + ("…" if len(rels) > 12 else ""),
-            "destructive": True,
-            "items": rels,
-        })
-    groups = root_artifact_candidates(project_path)
-    extra = {k: v for k, v in groups.items() if k != "dist"}
-    if extra:
-        total = sum(len(v) for v in extra.values())
-        detail = "；".join(f"{k}/ {len(v)} 个" for k, v in extra.items())
-        actions.append({
-            "key": "archive_artifacts",
-            "label": "归档 installer/ 与 build/ 构建产物到 versions/ 版本目录",
-            "detail": "将移动 " + str(total) + " 个构建产物到各自版本目录（" + detail + "）：" +
-                      "、".join(f"{k}/{p.name}" for k, v in extra.items() for p in v[:6]),
-            "destructive": True,
-        })
+    # 构建产物归档动作：仅对「按构建产物处理 dist/」的协议提供
+    if protocols.build_archive_for(ptype):
+        dist_dir = project_path / "dist"
+        candidates = detect_build_artifacts(dist_dir)
+        if candidates:
+            rels = [str(c.relative_to(dist_dir)) for c in candidates]
+            actions.append({
+                "key": "archive_dist",
+                "label": "归档根目录 dist/ 构建产物到 versions/ 版本目录",
+                "detail": "将移动 " + str(len(rels)) + " 个构建产物（移动而非删除，目标已存在时跳过不覆盖）：" + "、".join(rels[:12]) + ("…" if len(rels) > 12 else ""),
+                "destructive": True,
+                "items": rels,
+            })
+        groups = root_artifact_candidates(project_path)
+        extra = {k: v for k, v in groups.items() if k != "dist"}
+        if extra:
+            total = sum(len(v) for v in extra.values())
+            detail = "；".join(f"{k}/ {len(v)} 个" for k, v in extra.items())
+            actions.append({
+                "key": "archive_artifacts",
+                "label": "归档 installer/ 与 build/ 构建产物到 versions/ 版本目录",
+                "detail": "将移动 " + str(total) + " 个构建产物到各自版本目录（" + detail + "）：" +
+                          "、".join(f"{k}/{p.name}" for k, v in extra.items() for p in v[:6]),
+                "destructive": True,
+            })
     required_checks = [c for c in checks if c["required"]]
     passed = sum(1 for c in required_checks if c["ok"])
     return {
         "type": ptype,
-        "compliant": bool(required_checks) and passed == len(required_checks),
+        "compliant": (not required_checks) or passed == len(required_checks),
         "summary": {
             "passed": passed,
             "total": len(required_checks),

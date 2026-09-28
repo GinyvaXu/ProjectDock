@@ -1,14 +1,27 @@
 from __future__ import annotations
 
 import os
+import stat as stat_module
 from pathlib import Path
 
-from . import naming
+from . import naming, protocols
 from .naming import ParsedProject, sanitize_title
 from .versioning import read_version
 from . import compliance
 
 INVALID_CHARS = naming.INVALID_CHARS  # 兼容旧引用
+
+
+def _is_alias(path: Path) -> bool:
+    """目录联接 / 符号链接（同一实体的别名，不重复纳管）。"""
+    try:
+        if path.is_symlink():
+            return True
+        st = os.lstat(path)
+        attrs = getattr(st, "st_file_attributes", 0)
+        return bool(attrs & getattr(stat_module, "FILE_ATTRIBUTE_REPARSE_POINT", 0))
+    except OSError:
+        return False
 
 
 def parse_project_entry(name: str) -> ParsedProject | None:
@@ -37,16 +50,21 @@ def make_folder_name(root: Path, ptype: str, title: str, style_id: str | None = 
     return naming.make_folder_name(root, ptype, title, style_id)
 
 
-def scan_root(root: Path, db_rows: dict[str, dict] | None = None) -> list[dict]:
-    """扫描根目录下的项目文件夹（兼容全部命名风格），并与注册表合并元数据。"""
+def scan_root(root: Path, db_rows: dict[str, dict] | None = None, style_id: str | None = None) -> list[dict]:
+    """扫描根目录下的项目文件夹（按命名风格；free 时纳管全部非点开头文件夹）。
+
+    style_id 缺省/auto 时按资料库自动识别；严格风格下仅识别严格风格文件夹
+    （其余文件夹由 list_unmanaged 提示手动导入）。
+    """
     db_rows = db_rows or {}
     result: list[dict] = []
     if not root.is_dir():
         return result
+    include_free = naming.resolve_style(root, style_id) == "free"
     for child in sorted(root.iterdir(), key=lambda p: p.name.lower()):
-        if not child.is_dir():
+        if not child.is_dir() or _is_alias(child):
             continue
-        entry = naming.parse_name(child.name)
+        entry = naming.parse_name(child.name, include_free=include_free)
         if not entry:
             continue
         db = db_rows.get(child.name, {})
@@ -55,6 +73,7 @@ def scan_root(root: Path, db_rows: dict[str, dict] | None = None) -> list[dict]:
         # 无类型风格：类型以注册表（数据库）为准，未注册时归入「其他」
         ptype = entry.ptype or db.get("type") or "其他"
         title = entry.title
+        override = db.get("version_scheme") or ""
         result.append({
             "id": child.name,
             "name": child.name,
@@ -62,6 +81,8 @@ def scan_root(root: Path, db_rows: dict[str, dict] | None = None) -> list[dict]:
             "title": title,
             "path": str(child),
             "style": entry.style,
+            "version_scheme": protocols.version_scheme_for(ptype, override),
+            "version_scheme_set": override,
             "description": db.get("description", ""),
             "imported": bool(db.get("imported", False)),
             "pinned": bool(db.get("pinned", False)),
@@ -73,6 +94,33 @@ def scan_root(root: Path, db_rows: dict[str, dict] | None = None) -> list[dict]:
             "compliant": compliance.quick_compliance(child, ptype),
         })
     return result
+
+
+def list_unmanaged(root: Path, db_rows: dict[str, dict] | None = None, style_id: str | None = None) -> list[dict]:
+    """未纳管文件夹：不符合严格命名风格、且未导入/未移除的根目录文件夹。
+
+    - 自由命名（free）下所有非点开头文件夹均已纳管，返回空；
+    - 已导入（含用户主动移除）的不再提示；点开头目录始终排除。
+    """
+    db_rows = db_rows or {}
+    out: list[dict] = []
+    if not root.is_dir():
+        return out
+    if naming.resolve_style(root, style_id) == "free":
+        return out
+    for child in sorted(root.iterdir(), key=lambda p: p.name.lower()):
+        if not child.is_dir() or child.name.startswith(".") or _is_alias(child):
+            continue
+        if naming.parse_name(child.name):
+            continue
+        if child.name in db_rows:
+            continue  # 已导入或用户已移除（excluded）
+        try:
+            mtime = child.stat().st_mtime
+        except OSError:
+            mtime = 0.0
+        out.append({"name": child.name, "path": str(child), "mtime": mtime})
+    return out
 
 
 LOGO_CANDIDATES = [
