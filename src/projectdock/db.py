@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS projects (
     updated_at TEXT NOT NULL,
     imported INTEGER NOT NULL DEFAULT 0,
     excluded INTEGER NOT NULL DEFAULT 0,
-    version_scheme TEXT NOT NULL DEFAULT ''
+    version_scheme TEXT NOT NULL DEFAULT '',
+    oc_session TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS project_types (
@@ -59,6 +60,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
             conn.execute("ALTER TABLE projects ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0")
         if "version_scheme" not in cols:
             conn.execute("ALTER TABLE projects ADD COLUMN version_scheme TEXT NOT NULL DEFAULT ''")
+        if "oc_session" not in cols:
+            conn.execute("ALTER TABLE projects ADD COLUMN oc_session TEXT NOT NULL DEFAULT ''")
 
 
 def upsert_project(conn, project_id: str, name: str, ptype: str, path: str,
@@ -111,6 +114,14 @@ def set_version_scheme(conn, project_id: str, scheme: str) -> None:
     with _DB_LOCK:
         conn.execute("UPDATE projects SET version_scheme = ?, updated_at = ? WHERE id = ?",
                      (scheme or "", now(), project_id))
+        conn.commit()
+
+
+def set_oc_session(conn, project_id: str, session_id: str) -> None:
+    """记录项目的 opencode 会话 id（用于对话续聊）。"""
+    with _DB_LOCK:
+        conn.execute("UPDATE projects SET oc_session = ?, updated_at = ? WHERE id = ?",
+                     (session_id or "", now(), project_id))
         conn.commit()
 
 

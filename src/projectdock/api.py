@@ -7,24 +7,26 @@ import os
 import queue as queue_module
 import subprocess
 import sys
+import urllib.parse
 from mimetypes import guess_type
 from pathlib import Path
 
-from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import agent as agent_mod
 from . import iconmaker
-from . import ailog, backup, builder, compliance, console, contract, ghrepo, github, naming, presets, protocols, release, scanner, techstack, update, versioning
+from . import ailog, backup, builder, compliance, console, contract, ghrepo, github, naming, oc_client, presets, protocols, release, scanner, techstack, update, versioning
 from .agent import AGENTS
 from .config import APP_NAME, APP_VERSION
 from .db import delete_custom_type, delete_project, get_custom_type, get_project, list_custom_types, list_projects, set_pinned, set_version_scheme, upsert_custom_type, upsert_project
 from .models import (AGENT_NAMES, PROJECT_TYPES, THEMES, AILogCreate, AgentBatch, AgentRun,
                      AiTestPayload,
                      BackupRestore, BuildRun, ComplianceFix, CustomTypeCreate, GithubAuthPayload,
-                     GithubCreatePayload, GithubSetRemotePayload, IconPayload, OpenPath, OpenUrl,
+                     GithubCreatePayload, GithubSetRemotePayload, IconPayload, OcPtyCreate, OcPtyResize,
+                     OpenPath, OpenUrl,
                      ProjectCreate, ProjectImport, ProjectInit, ProjectUpdate, ReleaseRun, SettingsUpdate,
                      TechstackPayload, UpdateInstall)
 from .state import AppState
@@ -90,10 +92,12 @@ def create_app(state: AppState) -> FastAPI:
         return None
 
     def _resolve_agent(requested: str | None) -> str:
-        """解析 AI 后端：未知/缺省回落设置；api 未配置时给出明确提示。"""
+        """解析 AI 后端：未知/缺省回落设置；api/opencode 未就绪时给出明确提示。"""
         agent = requested if requested in AGENT_NAMES else state.settings.agent
         if agent == "api" and not state.settings.api_configured:
             raise HTTPException(status_code=400, detail="尚未配置 API 接入：请在「设置 → AI 接入」填写 Base URL / 模型 / API Key")
+        if agent == "opencode" and not oc_client.available():
+            raise HTTPException(status_code=400, detail="opencode 后台服务未运行：可运行 opencode service start，或先打开 opencode 桌面版")
         return agent
 
     @api.get("/health")
@@ -126,6 +130,7 @@ def create_app(state: AppState) -> FastAPI:
             update_repo=payload.update_repo,
             naming_style=payload.naming_style,
             api_base_url=payload.api_base_url, api_model=payload.api_model, api_key=payload.api_key,
+            oc_model=payload.oc_model,
         )
 
     @api.post("/ai/test")
@@ -143,6 +148,105 @@ def create_app(state: AppState) -> FastAPI:
         except api_agent.ApiAgentError as exc:
             raise HTTPException(status_code=400, detail=f"连接失败：{exc}")
         return {"ok": True, "models": models[:60], "count": len(models)}
+
+    # ---------------- opencode 集成（内嵌终端 + 对话后端） ----------------
+
+    @api.get("/oc/status")
+    def oc_status() -> dict:
+        """opencode 后台服务状态（终端 / 对话可用性）。"""
+        return oc_client.status()
+
+    @api.post("/oc/start")
+    def oc_start() -> dict:
+        try:
+            return {"ok": True, **oc_client.start_service()}
+        except oc_client.OcError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @api.get("/projects/{pid}/oc/ptys")
+    def oc_ptys(pid: str) -> list[dict]:
+        proj = _resolve_project(pid)
+        return oc_client.list_ptys(str(Path(proj["path"]).resolve()))
+
+    @api.post("/projects/{pid}/oc/pty", status_code=201)
+    def oc_create_pty(pid: str, payload: OcPtyCreate) -> dict:
+        """创建/复用一个内嵌终端（opencode TUI 或 shell），返回 WebSocket 路径。"""
+        proj = _resolve_project(pid)
+        kind = payload.kind if payload.kind in ("opencode", "shell") else "opencode"
+        directory = str(Path(proj["path"]).resolve())
+        pty = None
+        if not payload.new:
+            for item in oc_client.list_ptys(directory):
+                if str(item.get("title") or "") == f"PD-{kind}" and item.get("status") == "running":
+                    pty = item
+                    break
+        if pty is None:
+            try:
+                pty = oc_client.create_pty(directory, kind, cols=payload.cols, rows=payload.rows)
+            except oc_client.OcError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+        ws_path = f"/api/oc/pty/{pty.get('id')}/ws?directory={urllib.parse.quote(directory)}"
+        return {"id": pty.get("id"), "title": pty.get("title"), "kind": kind, "ws": ws_path}
+
+    @api.delete("/projects/{pid}/oc/pty/{pty_id}")
+    def oc_delete_pty(pid: str, pty_id: str) -> dict:
+        proj = _resolve_project(pid)
+        oc_client.delete_pty(str(Path(proj["path"]).resolve()), pty_id)
+        return {"ok": True}
+
+    @api.post("/projects/{pid}/oc/pty/{pty_id}/resize")
+    def oc_resize_pty(pid: str, pty_id: str, payload: OcPtyResize) -> dict:
+        proj = _resolve_project(pid)
+        oc_client.resize_pty(str(Path(proj["path"]).resolve()), pty_id, payload.cols, payload.rows)
+        return {"ok": True}
+
+    @api.websocket("/oc/pty/{pty_id}/ws")
+    async def oc_pty_ws(websocket: WebSocket, pty_id: str, directory: str = ""):
+        """浏览器终端 ↔ opencode 托管 PTY 的双向代理（鉴权在服务端注入）。"""
+        import websockets
+
+        await websocket.accept()
+        if not directory:
+            await websocket.close(code=1008, reason="missing directory")
+            return
+        try:
+            oc_url = oc_client.pty_ws_url(directory, pty_id)
+        except oc_client.OcError as exc:
+            await websocket.close(code=1011, reason=str(exc)[:120])
+            return
+        try:
+            async with websockets.connect(oc_url, additional_headers={"Authorization": oc_client.auth_header()},
+                                          max_size=None, ping_interval=None) as oc_ws:
+                async def browser_to_oc() -> None:
+                    while True:
+                        msg = await websocket.receive()
+                        if msg.get("type") == "websocket.disconnect":
+                            return
+                        if msg.get("bytes") is not None:
+                            await oc_ws.send(msg["bytes"])
+                        elif msg.get("text") is not None:
+                            await oc_ws.send(msg["text"])
+
+                async def oc_to_browser() -> None:
+                    async for message in oc_ws:
+                        if isinstance(message, (bytes, bytearray)):
+                            await websocket.send_bytes(bytes(message))
+                        else:
+                            await websocket.send_text(str(message))
+
+                tasks = [asyncio.create_task(browser_to_oc()), asyncio.create_task(oc_to_browser())]
+                try:
+                    await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+                finally:
+                    for t in tasks:
+                        t.cancel()
+        except Exception:  # noqa: BLE001 - WS 断开属正常路径
+            pass
+        finally:
+            try:
+                await websocket.close()
+            except Exception:  # noqa: BLE001
+                pass
 
     @api.get("/naming/styles")
     def list_naming_styles() -> dict:

@@ -27,6 +27,12 @@ AGENTS = {
         "system_args": [],
         "hint": "设置 → AI 接入 里填 Base URL / 模型 / API Key（OpenAI 兼容，如 DeepSeek），无需安装 pi/claude",
     },
+    "opencode": {
+        "label": "OpenCode",
+        "command": [],
+        "system_args": [],
+        "hint": "本机 opencode 后台服务（与桌面版同配置/同模型）；服务未运行时可运行 opencode service start",
+    },
 }
 
 
@@ -167,6 +173,22 @@ async def run_agent_task(state, project_path: Path, agent: str, prompt: str, emi
         status(f"正在调用 {label}（{state.settings.api_model or '未配置模型'}）…")
         try:
             await _asyncio.to_thread(api_agent.run_api_agent, state.settings, project_path, prompt, emit, context)
+            code = 0
+        except Exception as exc:  # noqa: BLE001
+            emit("")
+            emit("———— 任务报告 ————")
+            emit(f"状态：失败（{exc}）")
+            hint = AGENTS.get(agent, {}).get("hint")
+            if hint:
+                emit(f"提示：{hint}")
+            raise
+    elif agent == "opencode":
+        import asyncio as _asyncio
+
+        from . import oc_client
+        status(f"正在连接 {label}（{state.settings.oc_model}）…")
+        try:
+            await _asyncio.to_thread(oc_client.run_chat_task, state.settings, state.conn, project_path, prompt, emit)
             code = 0
         except Exception as exc:  # noqa: BLE001
             emit("")

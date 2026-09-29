@@ -275,6 +275,7 @@
     S.builds = [];
     S.compliance = null;
     S.currentTab = "overview";
+    teardownTerminalWs();
     $("drawerName").textContent = proj.title;
     $("drawerType").textContent = proj.type;
     $("drawerType").className = "badge " + esc(proj.type);
@@ -305,7 +306,9 @@
   }
 
   function closeDrawer() {
+    teardownTerminalWs();
     const drawer = $("drawer");
+    drawer.classList.remove("wide");
     const backdrop = $("backdrop");
     Spring.slideOut(drawer, {
       to: 120,
@@ -321,7 +324,7 @@
   function tabsFor(type) {
     const t = S.types.find((x) => x.name === type);
     if (t && Array.isArray(t.tabs) && t.tabs.length) return t.tabs;
-    return ["overview", "versions", "compliance", "ai", "ailog"];
+    return ["overview", "ai"];
   }
 
   function renderDrawerTabs(type) {
@@ -340,6 +343,11 @@
     panel.classList.add("active");
     void panel.offsetWidth;
     panel.classList.add("panel-in");
+    if (tab !== "ai") {
+      teardownTerminalWs();
+      const drawer = $("drawer");
+      if (drawer) drawer.classList.remove("wide");
+    }
     if (tab === "versions") {
       if (S.versions === null && !S.versionsLoading) loadVersionsData();
       renderVersions();
@@ -349,7 +357,7 @@
     if (tab === "ailog") renderAILog();
     if (tab === "github") renderGithub();
     if (tab === "techstack") renderTechstack();
-    if (tab === "ai") renderChatPresets();
+    if (tab === "ai") renderAiPanel();
   }
 
   function renderOverview(proj) {
@@ -368,6 +376,7 @@
       "<div class='git-panel'><div class='git-head'><h4>Git 状态</h4><button class='btn btn-sm' id='btnGitRefresh'>刷新</button></div><div class='git-body' id='gitBody'>加载中…</div></div>" +
       "<div class='git-panel'><div class='git-head'><h4>备份管理</h4><button class='btn btn-sm' id='btnBackupNow'>立即备份</button></div><div class='git-body' id='backupList'>加载中…</div></div>" +
       "<div class='doc-panel'><div class='git-head'><h4>项目文档</h4><button class='btn btn-sm' id='btnDocRefresh'>刷新</button></div><div class='doc-list' id='docList'>加载中…</div></div>" +
+      "<div class='git-panel'><div class='git-head'><h4>合规与维护</h4><button class='btn btn-sm' id='btnOvCompliance'>检查</button></div><div class='git-body' id='ovCompliance'>加载中…</div></div>" +
       "<div class='action-row'>" +
         "<button class='btn btn-sm' data-act='open'>打开文件夹</button>" +
         "<button class='btn btn-sm' data-act='copy'>复制路径</button>" +
@@ -387,9 +396,12 @@
     if (docRefresh) docRefresh.addEventListener("click", () => loadDocuments(S.current.id));
     const backupBtn = $("btnBackupNow");
     if (backupBtn) backupBtn.addEventListener("click", createBackupNow);
+    const ovComp = $("btnOvCompliance");
+    if (ovComp) ovComp.addEventListener("click", () => { S.compliance = null; renderCompliance("ovCompliance"); });
     loadGitStatus(proj.id);
     loadDocuments(proj.id);
     loadBackups(proj.id);
+    renderCompliance("ovCompliance");
   }
 
   /* 备份管理 */
@@ -993,6 +1005,165 @@
     });
   }
 
+  /* ============ AI 栏目：终端 / 对话 / 日志 ============ */
+  const AI_SUBS = ["terminal", "chat", "logs"];
+  let term = null;
+  let fitAddon = null;
+  let termWs = null;
+  let termPtyId = null;
+  let termKindCurrent = "opencode";
+  let termResizeTimer = null;
+
+  function currentAiSub() {
+    const sub = (typeof localStorage !== "undefined" && localStorage.getItem("pd.aiSub")) || "terminal";
+    return AI_SUBS.indexOf(sub) >= 0 ? sub : "terminal";
+  }
+
+  function renderAiPanel() {
+    const wrap = $("aiSubtabs");
+    if (wrap && !wrap.dataset.bound) {
+      wrap.dataset.bound = "1";
+      wrap.querySelectorAll(".ai-subtab").forEach((btn) => {
+        btn.addEventListener("click", () => showAiSub(btn.dataset.sub));
+      });
+    }
+    showAiSub(currentAiSub());
+  }
+
+  function showAiSub(sub) {
+    if (AI_SUBS.indexOf(sub) < 0) sub = "terminal";
+    if (typeof localStorage !== "undefined") localStorage.setItem("pd.aiSub", sub);
+    const wrap = $("aiSubtabs");
+    if (wrap) wrap.querySelectorAll(".ai-subtab").forEach((b) => b.classList.toggle("active", b.dataset.sub === sub));
+    AI_SUBS.forEach((s) => { const v = $("aiView-" + s); if (v) v.classList.toggle("active", s === sub); });
+    const drawer = $("drawer");
+    if (drawer) drawer.classList.toggle("wide", sub === "terminal");
+    if (sub === "terminal") initTerminalView();  // 保持连接：切到对话/日志不主动断开
+    if (sub === "chat") { renderChatPresets(); if (S.current) renderChat(S.current.id, "chatMsgs"); }
+    if (sub === "logs") renderAILog("aiView-logs");
+  }
+
+  function showTermEmpty(st) {
+    const box = $("termEmpty");
+    if (!box) return;
+    box.hidden = false;
+    box.innerHTML = "⚠ opencode 后台服务未运行，终端功能不可用。" +
+      (st && st.error ? "<span style='color:var(--text-3)'>（" + esc(st.error) + "）</span>" : "") +
+      "<div style='margin-top:10px'><button class='btn btn-sm btn-primary' id='btnOcStart'>启动 opencode 服务</button>" +
+      "<span style='color:var(--text-3);margin-left:10px'>或先打开 opencode 桌面版</span></div>";
+    const btn = $("btnOcStart");
+    if (btn) btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      btn.textContent = "启动中…";
+      try {
+        const res = await api("/api/oc/start", { method: "POST", body: {} });
+        toast(res.available ? "opencode 服务已启动" : "已尝试启动，请稍后重试");
+        initTerminalView();
+      } catch (err) { toast(err.message, "err"); btn.disabled = false; btn.textContent = "启动 opencode 服务"; }
+    });
+  }
+
+  function hideTermEmpty() { const box = $("termEmpty"); if (box) box.hidden = true; }
+
+  async function initTerminalView() {
+    const status = $("termStatus");
+    if (status) status.textContent = "检查 opencode 服务…";
+    try {
+      const st = await api("/api/oc/status");
+      if (!st.available) { showTermEmpty(st); if (status) status.textContent = "服务未运行"; return; }
+      hideTermEmpty();
+      if (status) status.textContent = "opencode v" + esc(st.version || "?");
+      await ensureTerminal();
+      if (!termWs || termWs.readyState > 1) await connectTerminal(termKindCurrent, false);
+    } catch (err) {
+      showTermEmpty({ error: err.message });
+      if (status) status.textContent = "检查失败";
+    }
+  }
+
+  async function ensureTerminal() {
+    if (term) return;
+    const host = $("termHost");
+    if (!host || !window.Terminal) return;
+    term = new window.Terminal({
+      fontFamily: "Consolas, 'Cascadia Mono', 'Courier New', monospace",
+      fontSize: 13,
+      cursorBlink: true,
+      scrollback: 8000,
+      theme: { background: "#16181d", foreground: "#e6e6e6", cursor: "#7cc4ff", selectionBackground: "rgba(124,196,255,.28)" },
+    });
+    if (window.FitAddon && window.FitAddon.FitAddon) {
+      fitAddon = new window.FitAddon.FitAddon();
+      term.loadAddon(fitAddon);
+    }
+    term.open(host);
+    window.__pdTerm = term;  // 调试/自动化测试钩子
+    try { if (fitAddon) fitAddon.fit(); } catch (e) { /* ignore */ }
+    term.onData((data) => { if (termWs && termWs.readyState === 1) termWs.send(new TextEncoder().encode(data)); });
+    term.onResize(({ cols, rows }) => {
+      clearTimeout(termResizeTimer);
+      termResizeTimer = setTimeout(() => resizeTerminal(cols, rows), 300);
+    });
+  }
+
+  function termWrite(data) {
+    if (!term) return;
+    if (typeof data === "string") {
+      term.write(data.replace(/\x00\{[^\x00]*\}/g, ""));
+      return;
+    }
+    const bytes = data instanceof ArrayBuffer ? new Uint8Array(data) : data;
+    let hasCtl = false;
+    for (let i = 0; i < bytes.length; i++) { if (bytes[i] === 0) { hasCtl = true; break; } }
+    if (hasCtl) {
+      term.write(new TextDecoder().decode(bytes).replace(/\x00\{[^\x00]*\}/g, ""));
+    } else {
+      term.write(bytes);
+    }
+  }
+
+  async function connectTerminal(kind, forceNew) {
+    if (!S.current) return;
+    const status = $("termStatus");
+    teardownTerminalWs();
+    try {
+      const cols = term ? term.cols : 100;
+      const rows = term ? term.rows : 30;
+      const res = await api("/api/projects/" + encodeURIComponent(S.current.id) + "/oc/pty", {
+        method: "POST", body: { kind: kind, new: !!forceNew, cols: cols, rows: rows },
+      });
+      termPtyId = res.id;
+      termKindCurrent = kind;
+      if (term) { term.reset(); term.clear(); }
+      const proto = location.protocol === "https:" ? "wss:" : "ws:";
+      const ws = new WebSocket(proto + "//" + location.host + res.ws);
+      ws.binaryType = "arraybuffer";
+      termWs = ws;
+      window.__pdTermWs = ws;  // 调试/自动化测试钩子
+      if (status) status.textContent = "连接中…";
+      ws.onopen = () => {
+        if (status) status.textContent = (kind === "opencode" ? "opencode" : "shell") + " · 已连接";
+        try { if (fitAddon) fitAddon.fit(); } catch (e) { /* ignore */ }
+        if (term) resizeTerminal(term.cols, term.rows);  // 立即同步一次真实尺寸
+      };
+      ws.onmessage = (ev) => termWrite(ev.data);
+      ws.onclose = () => { if (termWs === ws) termWs = null; if (status) status.textContent = "已断开"; };
+      ws.onerror = () => { if (status) status.textContent = "连接错误"; };
+    } catch (err) {
+      if (status) status.textContent = "失败";
+      toast(err.message, "err");
+    }
+  }
+
+  function teardownTerminalWs() {
+    if (termWs) { try { termWs.close(); } catch (e) { /* ignore */ } termWs = null; }
+  }
+
+  function resizeTerminal(cols, rows) {
+    if (!termPtyId || !S.current) return;
+    api("/api/projects/" + encodeURIComponent(S.current.id) + "/oc/pty/" + termPtyId + "/resize",
+      { method: "POST", body: { cols: cols, rows: rows } }).catch(() => {});
+  }
   const ICON_SYMBOLS = [
     ["播放", 0], ["地球", 1], ["手柄", 2], ["图表", 3], ["文档", 4], ["终端", 5],
     ["菱形", 6], ["星星", 7], ["齿轮", 8], ["书本", 9], ["相机", 10], ["音符", 11],
@@ -1085,11 +1256,11 @@
     }
   }
 
-  async function renderAILog() {
+  async function renderAILog(targetId) {
     if (!S.current) return;
     const seq = S.drawerSeq;
     const pid = S.current.id;
-    const panel = $("panel-ailog");
+    const panel = $(targetId || "panel-ailog");
     if (!panel) return;
     panel.innerHTML = "<div class='ver-block'><div class='ver-head'><h4>AI 操作日志</h4><button class='btn btn-sm' id='btnAILogRefresh'>刷新</button></div><div class='build-log'>加载中…</div></div>";
     try {
@@ -1130,7 +1301,7 @@
         });
       }
       const ref = $("btnAILogRefresh");
-      if (ref) ref.addEventListener("click", renderAILog);
+      if (ref) ref.addEventListener("click", () => renderAILog(targetId));
     } catch (err) {
       const box = panel.querySelector(".build-log");
       if (box) box.innerHTML = "加载失败：" + esc(err.message);
@@ -1361,11 +1532,12 @@
   }
 
   /* ============ 合规检查 ============ */
-  async function renderCompliance() {
+  async function renderCompliance(targetId) {
     if (!S.current) return;
+    const target = targetId || "panel-compliance";
     const seq = S.drawerSeq;
     const pid = S.current.id;
-    const panel = $("panel-compliance");
+    const panel = $(target);
     if (!panel) return;
     if (!S.compliance) {
       panel.innerHTML = "<div class='build-log'>加载合规检查中…</div>";
@@ -1419,19 +1591,19 @@
 
     panel.innerHTML = html;
     const ref = $("btnComplianceRefresh");
-    if (ref) ref.addEventListener("click", () => { S.compliance = null; renderCompliance(); });
+    if (ref) ref.addEventListener("click", () => { S.compliance = null; renderCompliance(target); });
     const fix = $("btnComplianceFix");
-    if (fix) fix.addEventListener("click", runComplianceFix);
+    if (fix) fix.addEventListener("click", () => runComplianceFix(target));
   }
 
-  async function runComplianceFix() {
+  async function runComplianceFix(targetId) {
     if (!S.current || !S.compliance) return;
-    const panel = $("panel-compliance");
-    const keys = Array.from(panel.querySelectorAll("input[data-key]:checked")).map((el) => el.dataset.key);
+    const panel = $(targetId || "panel-compliance");
+    const keys = panel ? Array.from(panel.querySelectorAll("input[data-key]:checked")).map((el) => el.dataset.key) : [];
     if (!keys.length) { toast("请先勾选要执行的修复动作", "err"); return; }
     const destructive = keys.filter((k) => { const a = S.compliance.actions.find((x) => x.key === k); return a && a.destructive; });
     if (destructive.length && !window.confirm("以下动作会移动文件（不删除任何文件）：\n" + destructive.join("、") + "\n\n确认执行？")) return;
-    const box = $("cmpLogBox");
+    const box = panel ? panel.querySelector("#cmpLogBox") : null;
     if (!box) return;
     box.innerHTML = "<div class='build-status'>执行中…</div>";
     try {
@@ -1442,7 +1614,7 @@
         "<div class='build-status " + (r.ok ? "ok" : "err") + "'>" + (r.ok ? "✓ " : "✗ ") + esc(r.message || r.key) + "</div>"
       ).join("");
       S.compliance = null;
-      await renderCompliance();
+      await renderCompliance(targetId);
       await refresh();
     } catch (err) {
       box.innerHTML = "<div class='build-status err'>执行失败：" + esc(err.message) + "</div>";
@@ -2299,6 +2471,8 @@ async function runBuild(script) {
     }
     const aiSt = $("aiTestStatus");
     if (aiSt) aiSt.textContent = S.settings.api_configured ? "已配置 ✓" : "未配置";
+    const ocModel = $("ocModelInput");
+    if (ocModel) ocModel.value = S.settings.oc_model || "";
     loadNamingStyleOptions();
     renderTypeTabsEditor();
     openModal("settings");
@@ -2384,6 +2558,8 @@ async function runBuild(script) {
       if (ab) body.api_base_url = ab.value.trim();
       if (am) body.api_model = am.value.trim();
       if (ak && ak.value.trim()) body.api_key = ak.value.trim();
+      const ocEl = $("ocModelInput");
+      if (ocEl) body.oc_model = ocEl.value.trim();
       S.settings = await api("/api/settings", { method: "PUT", body });
       S.namingStyles = null;  // 风格可能变化（含自动识别结果），下次打开重新拉取
       applyTheme(S.settings.theme);
@@ -2701,6 +2877,18 @@ async function runBuild(script) {
         if (am) am.value = p[1];
       }
       apiPreset.value = "";
+    });
+    const termKind = $("termKind");
+    if (termKind) termKind.addEventListener("change", () => connectTerminal(termKind.value, false));
+    const btnTermRestart = $("btnTermRestart");
+    if (btnTermRestart) btnTermRestart.addEventListener("click", () => {
+      connectTerminal($("termKind") ? $("termKind").value : "opencode", true);
+    });
+    const btnTermClear = $("btnTermClear");
+    if (btnTermClear) btnTermClear.addEventListener("click", () => { if (term) term.clear(); });
+    window.addEventListener("resize", () => {
+      const v = $("aiView-terminal");
+      if (term && v && v.classList.contains("active")) { try { if (fitAddon) fitAddon.fit(); } catch (e) { /* ignore */ } }
     });
     const btnGhRefresh = $("btnGhRefresh");
     if (btnGhRefresh) btnGhRefresh.addEventListener("click", loadGithubAuth);

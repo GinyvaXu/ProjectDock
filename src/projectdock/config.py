@@ -8,7 +8,7 @@ from pathlib import Path
 from . import naming
 
 APP_NAME = "ProjectDock"
-APP_VERSION = "1.7.0"
+APP_VERSION = "1.8.0"
 
 
 def _gh_logged_in() -> bool:
@@ -71,6 +71,7 @@ class Settings:
         "api_base_url": "https://api.deepseek.com",
         "api_model": "deepseek-chat",
         "api_key": "",
+        "oc_model": "opencode-go/deepseek-v4.1-flash",
     }
 
     def __init__(self, data_dir: Path | None = None):
@@ -164,6 +165,11 @@ class Settings:
     def api_configured(self) -> bool:
         return bool(self.api_base_url and self.api_model and self.api_key)
 
+    @property
+    def oc_model(self) -> str:
+        """opencode 会话模型（provider/model，如 opencode-go/deepseek-v4.1-flash）。"""
+        return str(self._data.get("oc_model") or "opencode-go/deepseek-v4.1-flash").strip()
+
     def as_dict(self) -> dict:
         return {
             "root": str(self.root),
@@ -180,6 +186,7 @@ class Settings:
             "api_model": self.api_model,
             "api_key_set": bool(self.api_key),
             "api_configured": self.api_configured,
+            "oc_model": self.oc_model,
             "github_logged_in": bool(self.github_token) or _gh_logged_in(),
         }
 
@@ -212,6 +219,8 @@ class Settings:
                 self._data[key] = str(value or "").strip()
             elif key == "api_key":
                 self._data[key] = str(value or "").strip()
+            elif key == "oc_model":
+                self._data[key] = str(value or "").strip() or "opencode-go/deepseek-v4.1-flash"
         self.save()
         return self.as_dict()
 

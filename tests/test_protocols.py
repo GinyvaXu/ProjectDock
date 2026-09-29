@@ -23,7 +23,7 @@ def test_protocols_registry_integrity():
         assert proto.version_scheme in VERSION_SCHEMES
         for tab in proto.tabs:
             assert tab in presets.TAB_LABELS, tab
-        assert "overview" in proto.tabs and "ailog" in proto.tabs
+        assert "overview" in proto.tabs and "ai" in proto.tabs
         for item in (*proto.required, *proto.suggested):
             assert item["key"] and item["label"] and item["kind"] in ("file", "dir", "git", "pattern")
 
@@ -46,10 +46,11 @@ def test_version_scheme_override_priority():
 
 
 def test_tabs_for_new_types():
-    assert presets.tabs_for_type("文档加工") == ["overview", "docs", "ai", "ailog"]
+    assert presets.tabs_for_type("文档加工") == ["overview", "ai", "docs"]
     assert "versions" in presets.tabs_for_type("本地应用")
     assert "github" in presets.tabs_for_type("克隆仓库")
     assert "compliance" not in presets.tabs_for_type("工具脚本")
+    assert "ailog" not in presets.tabs_for_type("软件")  # 日志并入 AI 栏目
 
 
 def test_required_items_from_protocols():
@@ -161,7 +162,7 @@ def test_api_types_include_new_protocols(client):
     types = client.get("/api/types").json()
     by_name = {t["name"]: t for t in types}
     assert by_name["资料系统"]["version_scheme"] == "archive"
-    assert by_name["克隆仓库"]["tabs"] == ["overview", "github", "versions", "ai", "ailog"]
+    assert by_name["克隆仓库"]["tabs"] == ["overview", "ai", "versions", "github"]
 
 
 def test_api_unmanaged_and_import(client, state):

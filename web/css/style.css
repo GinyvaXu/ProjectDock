@@ -880,3 +880,31 @@ input, select, textarea { font-family: inherit; font-size: 14px; color: var(--te
   color: var(--text); background: var(--bg-soft); border: 1px solid var(--border); border-radius: 12px; padding: 12px;
 }
 .ts-editor:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(10,132,255,.18); }
+
+/* ============ AI 栏目（终端 / 对话 / 日志） ============ */
+.ai-subtabs { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; flex-shrink: 0; }
+.ai-subtab {
+  padding: 5px 14px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
+  background: var(--bg-soft); color: var(--text-2); border: 1px solid transparent;
+}
+.ai-subtab.active { background: var(--accent); color: #fff; }
+.ai-subview { display: none; }
+.ai-subview.active { display: block; }
+.ai-sub-status { font-size: 12px; color: var(--text-3); }
+#panel-ai.active { display: flex; flex-direction: column; overflow: hidden; }
+#panel-ai .ai-subview.active { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+#aiView-chat.active .chat { flex: 1; min-height: 0; height: auto; }
+#aiView-logs.active { overflow-y: auto; }
+.term-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-shrink: 0; }
+.term-bar select { padding: 4px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--input); color: var(--text); }
+.term-bar .spacer { flex: 1; }
+.term-status { font-size: 12px; color: var(--text-3); }
+.term-wrap { flex: 1; min-height: 300px; background: #16181d; border-radius: 12px; padding: 8px 6px 6px 10px; overflow: hidden; }
+#termHost { width: 100%; height: 100%; }
+#termHost .xterm { height: 100%; }
+#termHost .xterm-viewport { background: transparent !important; }
+.term-empty {
+  margin-top: 10px; padding: 14px 16px; border-radius: 12px;
+  background: var(--card); border: 1px dashed var(--border); color: var(--text-2); font-size: 13px; flex-shrink: 0;
+}
+.drawer.wide { width: min(980px, 96vw); }

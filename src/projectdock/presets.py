@@ -40,7 +40,11 @@ NEW_TABS = ("github", "techstack")
 
 
 def tabs_for_type(ptype: str, override: dict | None = None) -> list[str]:
-    """返回类型的 Tab 模板；override 来自设置（type_tabs）。"""
+    """返回类型的 Tab 模板；override 来自设置（type_tabs）。
+
+    注：AI 日志已并入「AI」栏目（子页签），不再单独作为默认 Tab；
+    旧版本保存的 ailog/compliance 覆盖仍按用户意愿保留。
+    """
     tabs = list(DEFAULT_TABS.get(ptype, DEFAULT_TABS["其他"]))
     if override and isinstance(override, dict):
         custom = override.get(ptype)
@@ -48,8 +52,6 @@ def tabs_for_type(ptype: str, override: dict | None = None) -> list[str]:
             tabs = [t for t in custom if t in TAB_LABELS]
     if "overview" not in tabs:
         tabs = ["overview"] + tabs
-    if "ailog" not in tabs:
-        tabs = tabs + ["ailog"]
     # 新版本新增的默认 Tab（如 github）自动并入用户已保存的模板；
     # 只并入 NEW_TABS，避免覆盖用户主动删除的旧 Tab（如 docs）
     default = DEFAULT_TABS.get(ptype, DEFAULT_TABS["其他"])

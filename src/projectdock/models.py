@@ -3,7 +3,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 PROJECT_TYPES = ["软件", "网站", "游戏", "PPT", "文稿", "脚本", "其他"]
-AGENT_NAMES = ["claude", "pi", "api"]
+AGENT_NAMES = ["claude", "pi", "api", "opencode"]
 THEMES = ["system", "light", "dark"]
 
 
@@ -97,6 +97,20 @@ class SettingsUpdate(BaseModel):
     api_base_url: str | None = None  # API 直连（OpenAI 兼容）
     api_model: str | None = None
     api_key: str | None = None
+    oc_model: str | None = None  # opencode 会话模型（provider/model）
+
+
+class OcPtyCreate(BaseModel):
+    """创建内嵌终端：kind=opencode（跑 opencode TUI）/ shell（cmd）。"""
+    kind: str = "opencode"
+    new: bool = False
+    cols: int = 100
+    rows: int = 30
+
+
+class OcPtyResize(BaseModel):
+    cols: int = 100
+    rows: int = 30
 
 
 class AiTestPayload(BaseModel):

@@ -48,19 +48,20 @@ def test_scan_documents_empty(tmp_path):
 
 def test_tabs_for_type_defaults_and_override():
     software = presets.tabs_for_type("软件")
-    assert software == ["overview", "techstack", "github", "versions", "compliance", "ai", "ailog"]
-    assert "docs" not in software
+    assert software == ["overview", "ai", "versions", "techstack", "github"]
+    assert "docs" not in software and "ailog" not in software
     doc = presets.tabs_for_type("文稿")
-    assert doc == ["overview", "docs", "ai", "ailog"]
+    assert doc == ["overview", "ai", "docs"]
     assert "versions" not in doc and "compliance" not in doc
     other = presets.tabs_for_type("不存在类型")
     assert other == presets.tabs_for_type("其他")
-    # 自定义覆盖：去掉 compliance，乱序 + 非法 key 被过滤（已含 overview 则不重排）
+    # 自定义覆盖：乱序 + 非法 key 被过滤（已含 overview 则不重排；github/techstack 自动并入）
     override = {"软件": ["ai", "overview", "bogus", "versions"]}
     tabs = presets.tabs_for_type("软件", override)
-    assert tabs == ["ai", "overview", "techstack", "github", "versions", "ailog"]
-    # overview / ailog 始终保留
-    assert presets.tabs_for_type("文稿", {"文稿": ["ai"]}) == ["overview", "ai", "ailog"]
+    assert tabs == ["ai", "overview", "techstack", "github", "versions"]
+    # overview 始终保留；旧版 ailog 覆盖仍按用户意愿保留
+    assert presets.tabs_for_type("文稿", {"文稿": ["ai"]}) == ["overview", "ai"]
+    assert presets.tabs_for_type("文稿", {"文稿": ["ai", "ailog"]}) == ["overview", "ai", "ailog"]
 
 
 def test_collect_activity_merges_projects(tmp_path):
@@ -166,4 +167,4 @@ def test_types_endpoint_has_tabs_and_labels(client):
     for t in types:
         assert t["tabs"] and t["tabs"][0] == "overview"
         assert set(t["tabs"]) <= set(t["tab_labels"])
-        assert t["tabs"][-1] == "ailog"
+        assert "ai" in t["tabs"]  # AI 栏目（终端/对话/日志）为默认核心栏目

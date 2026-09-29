@@ -113,7 +113,7 @@ def test_run_api_agent_tool_error_fed_back(tmp_path, monkeypatch):
 
 def test_agents_endpoint_includes_api(client):
     agents = client.get("/api/agents").json()
-    assert [a["name"] for a in agents] == ["claude", "pi", "api"]
+    assert [a["name"] for a in agents] == ["claude", "pi", "api", "opencode"]
 
 
 def test_settings_api_roundtrip(client):
