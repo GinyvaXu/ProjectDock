@@ -22,7 +22,8 @@
 | 🧬 技术栈文档 | 软件项目「技术栈」Tab 解析并展示 TECHSTACK.md（概览表格 + 核心功能实现逻辑/技术手段），在线编辑、模板生成、「AI 撰写」一键自动分析源码填写 |
 | 📜 版本菜单折叠 | 当前版本 / 更新日志 / 构建产物 / 构建脚本 分段折叠，默认收起，一键全部展开 |
 | 🚢 发布向导 | 版本号 → 更新日志 → 构建脚本 → git tag → 提交，一条龙；失败自动中止并报告 |
-| 🤖 内置 AI 助手 | pi / Claude Code / **API 直连**（贴入 API Key 即用；OpenAI 兼容，支持 DeepSeek / OpenCode GO 订阅网关）可切换，自然语言下指令，**流式回显 + 活动状态条 + 会话历史**；agent 需要拍板时输出选择卡片，点击选项即可回传继续执行；任务前自动备份、任务后输出 Git 报告 |
+| 🤖 内置 AI 助手 | pi / Claude Code / **API 直连**（贴入 API Key 即用；OpenAI 兼容，支持 DeepSeek / OpenCode GO）/ **OpenCode**（本机 opencode 会话）可切换，自然语言下指令，**流式回显 + 活动状态条 + 会话历史**；agent 需要拍板时输出选择卡片，点击选项即可回传继续执行；任务前自动备份、任务后输出 Git 报告 |
+| 🖥️ 内嵌终端 | AI 栏目内置 **xterm.js 终端**：默认在项目目录跑 **opencode TUI**（可切 shell）；新建/重启/清屏、随窗口自适应；opencode 服务未运行可一键启动 |
 | 📋 AI 操作日志 | 每个项目独立「AI 日志」时间线（来源 / 备份 / Git 明细 / 详情展开），总控台活动带项目名标签可直达；外部 agent 可读项目内 AGENTS.md 或调 `projectdock-cli` |
 | 🎛️ 总控台 | 跨项目活动时间线 / 运行中任务 / 批量下指令（**逐项目实时进度 + 流式输出**）/ 项目状态 / **AI 助手对话**（任意项目切换，独立会话） |
 | 🐙 GitHub 仓库管理 | 设置内登录 GitHub（gh 命令行或 PAT 令牌）；项目「GitHub 仓库」Tab 内嵌查看远程仓库信息 / 最近提交 / 发行版，README 正确渲染表格 / 列表 / 引用 / 徽章 / 相对图片 / 内嵌 HTML 并跟随默认分支，支持一键建仓推送、设置 origin、浏览器打开 |
@@ -108,7 +109,7 @@ python run.py --no-webview --port 8765  # 只起后端
 
 ## 🏗️ 技术栈
 
-- **后端**：Python 3.12 · FastAPI · Uvicorn · SQLite
+- **后端**：Python 3.12 · FastAPI · Uvicorn · SQLite · websockets（opencode 终端代理）
 - **窗口**：pywebview（Windows WebView2）
 - **前端**：原生 HTML/CSS/JS（零构建）+ 自研弹簧动画引擎 `web/js/spring.js`
 - **打包**：PyInstaller + Inno Setup；图标生成为纯标准库实现（可打包进 exe）
@@ -123,6 +124,7 @@ python run.py --no-webview --port 8765  # 只起后端
 │   ├── scanner.py          # 磁盘扫描、命名、logo 发现
 │   ├── naming.py           # 命名规范风格注册表（classic / local / free / auto）
 │   ├── protocols.py        # 管理协议注册表（骨架 / 合规 / 菜单 / 版本方案 / 归档规则）
+│   ├── oc_client.py        # opencode 桥接（会话对话 / SSE 事件流 / PTY 终端）
 │   ├── presets.py          # 类型预设与一键初始化
 │   ├── versioning.py       # 版本 / 更新日志 / 产物解析
 │   ├── compliance.py       # 合规化检查与一键修复
@@ -131,7 +133,7 @@ python run.py --no-webview --port 8765  # 只起后端
 │   ├── agent.py / runner.py# AI agent 与流式任务
 │   ├── builder.py / release.py / github.py / update.py
 │   └── contract.py / ailog.py / cli.py   # 契约 / 日志 / CLI
-├── web/                    # 前端（index.html / css / js）
+├── web/                    # 前端（index.html / css / js；vendor/xterm 终端组件）
 ├── tests/                  # pytest（137+ 用例，覆盖率 >85%）
 ├── build_*.py              # 构建脚本
 └── 00_设计草案.md … 03_管理逻辑与AI协作报告.md   # 设计文档

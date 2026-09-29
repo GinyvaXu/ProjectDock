@@ -3,6 +3,19 @@
 本文件记录 ProjectDock 的版本迭代。格式：语义化版本 + 日期 + 变更分组。
 
 
+## [1.8.0] - 2026-09-29
+### Added（AI 管理重构：内嵌 opencode 终端 + 四后端对话 + 六栏精简）
+- **「AI」栏目**（原 AI 管理）改为三子页签：**终端 / 对话 / 日志**（原 AI 日志并入）
+- **内嵌终端**：xterm.js + opencode 托管 PTY（WebSocket 经 PD 服务端代理注入鉴权）；默认跑 **opencode TUI**（cwd=项目目录），可切 shell；新建/重启/清屏、随窗口自适应尺寸；opencode 服务未运行时可一键启动
+- **对话新增「OpenCode」后端**（与 claude / pi / API 直连并列）：项目级 opencode 会话（存注册表可续聊）+ SSE 事件流映射（文本增量 / 工具活动 / 失败原因）；会话模型在设置中配置（默认 opencode-go/deepseek-v4.1-flash）
+- **次级菜单精简为 6 栏**：概览（新增「合规与维护」区，原合规栏并入）/ AI / 版本 / GitHub / 技术栈（软件类）/ 文档（原文稿版本）；按类型裁剪
+- 设置 → AI 接入新增「opencode 会话模型」
+- 依赖与前端：新增 `websockets>=12`；vendor 化 xterm.js 6.0 + addon-fit（离线可用，无构建步骤）
+- 测试：全量 230 个通过，覆盖率 80.20%（门槛 80%）；源码实例端到端实测：opencode TUI 内嵌、shell 交互、对话流式、合规折叠全部通过
+### Changed
+- 项目抽屉：终端子页签自动切宽版（980px）；离开 AI 栏目断开终端（PTY 保留，可续连）
+- 旧版 `ailog` / `compliance` 栏目键保留兼容（用户自定义模板不受影响）
+
 ## [1.7.0] - 2026-09-28
 ### Added（AI 后端兼容 OpenCode GO）
 - API 直连兼容 **OpenCode GO 订阅网关**（`https://opencode.ai/zen/go/v1`）：自动附加 `x-opencode-session` 路由头（网关缺失会 400）；请求使用浏览器 UA，绕过网关前置 Cloudflare 对 Python 默认 UA 的拦截（403 / error 1010）

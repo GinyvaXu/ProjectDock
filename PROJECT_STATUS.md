@@ -1,7 +1,13 @@
 # ProjectDock 项目状态
-- 版本：1.7.0（AI 后端兼容 OpenCode GO）
-- 状态：v1.6.0 → v1.7.0 功能迭代（开发中，未发布构建）
+- 版本：1.8.0（AI 管理重构：内嵌 opencode 终端 + 四后端对话 + 六栏精简）
+- 状态：v1.7.0 → v1.8.0 功能迭代（开发中，未发布构建）
 - GitHub：https://github.com/GinyvaXu/ProjectDock（私有，main 分支）
+
+## v1.8.0（2026-09-29）
+1. 「AI」栏目三子页签：终端（xterm.js + opencode TUI/shell，WebSocket 代理）/ 对话（新增 OpenCode 后端）/ 日志
+2. 次级菜单精简 6 栏：概览（含合规与维护）/ AI / 版本 / GitHub / 技术栈 / 文档
+3. 依赖 websockets；vendor xterm.js；设置新增 opencode 会话模型
+4. 质量：230 测试通过 / 覆盖率 80.20%；源码实例端到端实测（TUI 内嵌 / shell / 对话流式 / 合规折叠）
 
 ## v1.7.0（2026-09-28）
 1. API 直连兼容 OpenCode GO 订阅网关（x-opencode-session 头 + 浏览器 UA 绕 Cloudflare 拦截）

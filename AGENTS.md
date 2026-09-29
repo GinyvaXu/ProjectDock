@@ -67,6 +67,7 @@ ProjectDock 项目坞：本地项目文件管理器：iOS 风格 UI、Python 后
   - naming.py 命名规范风格注册表（classic/local/free/auto）；新建风格在此注册，扫描/创建/重命名自动生效；规范见 docs/命名规范.md
   - protocols.py 管理协议注册表（骨架/合规/菜单/版本方案/归档规则，12 个内置协议）；新增类型在此登记；见 docs/管理协议.md
   - api_agent.py API 直连 AI 后端（OpenAI 兼容流式 + 工具调用：list_dir/read_file/write_file/run_command，限定项目目录内）
+  - oc_client.py opencode 桥接（本机 opencode 后台服务：会话对话 + SSE 事件流 + PTY 终端；api.py 提供 WebSocket 代理）
   - presets.py 一键初始化模板与自定义类型；versioning.py 版本解析（semver/archive/upstream/none 四种方案）；runner.py 子进程流式任务；builder.py 构建脚本
   - agent.py AI 命令模板（claude/pi）；backup.py 任务前备份；github.py 自动建仓；release.py 发布向导
 - web/ — iOS 风格前端（原生 HTML/CSS/JS，无构建步骤）
