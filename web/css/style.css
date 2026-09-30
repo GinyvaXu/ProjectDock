@@ -908,3 +908,7 @@ input, select, textarea { font-family: inherit; font-size: 14px; color: var(--te
   background: var(--card); border: 1px dashed var(--border); color: var(--text-2); font-size: 13px; flex-shrink: 0;
 }
 .drawer.wide { width: min(980px, 96vw); }
+
+/* 概览 · 合规与维护折叠块 */
+.ver-head .spacer { flex: 1; }
+.ov-comp-status { font-size: 12px; color: var(--text-3); margin-right: 8px; }

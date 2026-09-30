@@ -37,6 +37,7 @@
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const projUrl = (pid) => "/api/projects/" + encodeURIComponent(pid);  // 项目 API/资源 URL 前缀
   const fmtSize = (n) => (n == null ? "" : n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : n >= 1024 ? (n / 1024).toFixed(1) + " KB" : n + " B");
   const TYPE_ICONS = { "软件": "💻", "网站": "🌐", "游戏": "🎮", "PPT": "📊", "文稿": "📄", "脚本": "🐍", "其他": "📁",
     "文档加工": "📚", "资料系统": "🗃️", "本地应用": "🧰", "克隆仓库": "🐙", "工具脚本": "🔧" };
@@ -376,7 +377,12 @@
       "<div class='git-panel'><div class='git-head'><h4>Git 状态</h4><button class='btn btn-sm' id='btnGitRefresh'>刷新</button></div><div class='git-body' id='gitBody'>加载中…</div></div>" +
       "<div class='git-panel'><div class='git-head'><h4>备份管理</h4><button class='btn btn-sm' id='btnBackupNow'>立即备份</button></div><div class='git-body' id='backupList'>加载中…</div></div>" +
       "<div class='doc-panel'><div class='git-head'><h4>项目文档</h4><button class='btn btn-sm' id='btnDocRefresh'>刷新</button></div><div class='doc-list' id='docList'>加载中…</div></div>" +
-      "<div class='git-panel'><div class='git-head'><h4>合规与维护</h4><button class='btn btn-sm' id='btnOvCompliance'>检查</button></div><div class='git-body' id='ovCompliance'>加载中…</div></div>" +
+      "<div class='ver-block collapsible collapsed' id='ovCompBlock'>" +
+        "<div class='ver-head' role='button' tabindex='0'><span class='caret'>▶</span><h4>合规与维护</h4>" +
+        "<span class='spacer'></span><span class='ov-comp-status' id='ovCompStatus'></span>" +
+        "<button class='btn btn-sm' id='btnOvCompliance'>检查</button></div>" +
+        "<div class='ver-body'><div class='ver-body-inner' id='ovCompliance'>加载中…</div></div>" +
+      "</div>" +
       "<div class='action-row'>" +
         "<button class='btn btn-sm' data-act='open'>打开文件夹</button>" +
         "<button class='btn btn-sm' data-act='copy'>复制路径</button>" +
@@ -397,7 +403,17 @@
     const backupBtn = $("btnBackupNow");
     if (backupBtn) backupBtn.addEventListener("click", createBackupNow);
     const ovComp = $("btnOvCompliance");
-    if (ovComp) ovComp.addEventListener("click", () => { S.compliance = null; renderCompliance("ovCompliance"); });
+    if (ovComp) ovComp.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      S.compliance = null;
+      renderCompliance("ovCompliance");
+    });
+    const ovHead = $("ovCompBlock") ? $("ovCompBlock").querySelector(".ver-head") : null;
+    if (ovHead) {
+      const toggle = () => $("ovCompBlock").classList.toggle("collapsed");
+      ovHead.addEventListener("click", toggle);
+      ovHead.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
+    }
     loadGitStatus(proj.id);
     loadDocuments(proj.id);
     loadBackups(proj.id);
@@ -411,7 +427,7 @@
     const seq = S.drawerSeq;
     body.innerHTML = "加载中…";
     try {
-      const list = await api("/api/projects/" + encodeURIComponent(id) + "/backups");
+      const list = await api(projUrl(id) + "/backups");
       if (seq !== S.drawerSeq || !S.current || S.current.id !== id) return;
       if (!list.length) {
         body.innerHTML = "<div class='git-row'><span>暂无备份（AI 任务/发布前会自动创建快照到 versions/backups/）</span></div>";
@@ -435,7 +451,7 @@
     const btn = $("btnBackupNow");
     if (btn) btn.disabled = true;
     try {
-      const r = await api("/api/projects/" + encodeURIComponent(S.current.id) + "/backups", { method: "POST", body: {} });
+      const r = await api(projUrl(S.current.id) + "/backups", { method: "POST", body: {} });
       toast("已创建备份 " + r.name);
       loadBackups(S.current.id);
     } catch (err) { toast(err.message, "err"); }
@@ -446,7 +462,7 @@
     if (!S.current) return;
     if (!window.confirm("从备份「" + name + "」恢复将覆盖当前项目文件（会自动先留一个安全快照）。确定继续？")) return;
     try {
-      const r = await api("/api/projects/" + encodeURIComponent(S.current.id) + "/backups/restore", { method: "POST", body: { name: name, confirm: true } });
+      const r = await api(projUrl(S.current.id) + "/backups/restore", { method: "POST", body: { name: name, confirm: true } });
       toast("已恢复 " + r.restored + " 个文件" + (r.skipped.length ? "（跳过 " + r.skipped.length + " 项）" : ""));
       loadBackups(S.current.id);
     } catch (err) { toast(err.message, "err"); }
@@ -456,7 +472,7 @@
     if (!S.current) return;
     if (!window.confirm("删除备份「" + name + "」？此操作不可恢复。")) return;
     try {
-      await api("/api/projects/" + encodeURIComponent(S.current.id) + "/backups/" + encodeURIComponent(name), { method: "DELETE" });
+      await api(projUrl(S.current.id) + "/backups/" + encodeURIComponent(name), { method: "DELETE" });
       toast("已删除备份");
       loadBackups(S.current.id);
     } catch (err) { toast(err.message, "err"); }
@@ -468,7 +484,7 @@
     const seq = S.drawerSeq;
     body.innerHTML = "加载中…";
     try {
-      const st = await api("/api/projects/" + encodeURIComponent(id) + "/git-status");
+      const st = await api(projUrl(id) + "/git-status");
       if (seq !== S.drawerSeq || !S.current || S.current.id !== id) return;
       if (!st.has_git) {
         body.innerHTML = "<div class='git-row'><span class='git-dot no'></span><span>该项目未初始化 git（可点上方「预设初始化」）</span></div>";
@@ -492,14 +508,14 @@
   async function openPath(path) {
     if (!S.current) return;
     try {
-      await api("/api/projects/" + encodeURIComponent(S.current.id) + "/open-file", { method: "POST", body: { path: path } });
+      await api(projUrl(S.current.id) + "/open-file", { method: "POST", body: { path: path } });
     } catch (err) { toast(err.message, "err"); }
   }
 
   async function revealPath(path) {
     if (!S.current) return;
     try {
-      await api("/api/projects/" + encodeURIComponent(S.current.id) + "/reveal-file", { method: "POST", body: { path: path } });
+      await api(projUrl(S.current.id) + "/reveal-file", { method: "POST", body: { path: path } });
     } catch (err) { toast(err.message, "err"); }
   }
 
@@ -514,7 +530,7 @@
     const seq = S.drawerSeq;
     list.innerHTML = "加载中…";
     try {
-      const docs = await api("/api/projects/" + encodeURIComponent(id) + "/documents");
+      const docs = await api(projUrl(id) + "/documents");
       if (seq !== S.drawerSeq || !S.current || S.current.id !== id) return;
       if (!docs.length) {
         list.innerHTML = "<div class='git-row'><span>未找到计划书/企划书等文档（支持 README、计划书、企划书、方案、设计、需求等）</span></div>";
@@ -536,7 +552,7 @@
     if (!S.current) return;
     const id = S.current.id;
     if (act === "open") {
-      try { await api("/api/projects/" + encodeURIComponent(id) + "/open", { method: "POST" }); }
+      try { await api(projUrl(id) + "/open", { method: "POST" }); }
       catch (err) { toast(err.message, "err"); }
     } else if (act === "copy") {
       try {
@@ -546,7 +562,7 @@
     } else if (act === "init") {
       if (!window.confirm("对「" + S.current.title + "」执行预设初始化？将按类型生成骨架文件（覆盖同名文件）并 git init。")) return;
       try {
-        await api("/api/projects/" + encodeURIComponent(id) + "/init", { method: "POST", body: { description: S.current.description, git: true } });
+        await api(projUrl(id) + "/init", { method: "POST", body: { description: S.current.description, git: true } });
         toast("预设初始化完成");
         await refresh();
         openDrawer(id);
@@ -562,7 +578,7 @@
     } else if (act === "remove") {
       if (!window.confirm("仅从 ProjectDock 移除管理（不会删除文件夹），继续？")) return;
       try {
-        await api("/api/projects/" + encodeURIComponent(id), { method: "DELETE" });
+        await api(projUrl(id), { method: "DELETE" });
         toast("已移除管理");
         closeDrawer();
         await refresh();
@@ -572,7 +588,7 @@
 
   async function togglePin(id, btn, fromOverview) {
     try {
-      const res = await api("/api/projects/" + encodeURIComponent(id) + "/pin", { method: "POST" });
+      const res = await api(projUrl(id) + "/pin", { method: "POST" });
       const p = S.projects.find((x) => x.id === id);
       if (p) p.pinned = res.pinned;
       if (btn) {
@@ -620,7 +636,7 @@
     if (!payload.name) { toast("项目名称不能为空", "err"); return; }
     const oldId = S.current.id;
     try {
-      const updated = await api("/api/projects/" + encodeURIComponent(oldId), { method: "PUT", body: payload });
+      const updated = await api(projUrl(oldId), { method: "PUT", body: payload });
       toast("项目信息已更新");
       closeModal("edit");
       await refresh();
@@ -658,7 +674,7 @@
     if (!panel) return;
     panel.innerHTML = "<div class='gh-box'><div class='gh-loading'>加载 GitHub 信息…</div></div>";
     try {
-      const data = await api("/api/projects/" + encodeURIComponent(pid) + "/github");
+      const data = await api(projUrl(pid) + "/github");
       if (seq !== S.drawerSeq || !S.current || S.current.id !== pid) return;
       let html = "<div class='gh-box'>";
       if (!data.auth.logged_in) {
@@ -727,7 +743,7 @@
       if (!window.confirm("将在 GitHub 创建仓库并推送当前分支到 origin，继续？")) return;
       const vis = ($("ghCreateVis") || {}).value || "private";
       try {
-        const r = await api("/api/projects/" + encodeURIComponent(pid) + "/github/create", { method: "POST", body: { visibility: vis } });
+        const r = await api(projUrl(pid) + "/github/create", { method: "POST", body: { visibility: vis } });
         toast(r.message || "仓库已创建");
         renderGithub();
       } catch (err) { toast(err.message, "err"); }
@@ -737,7 +753,7 @@
       const url = ($("ghRemoteInput") || {}).value || "";
       if (!url) { toast("请填写远程地址", "err"); return; }
       try {
-        const r = await api("/api/projects/" + encodeURIComponent(pid) + "/github/set-remote", { method: "POST", body: { url: url } });
+        const r = await api(projUrl(pid) + "/github/set-remote", { method: "POST", body: { url: url } });
         toast(r.message || "已设置");
         renderGithub();
       } catch (err) { toast(err.message, "err"); }
@@ -756,7 +772,7 @@
     if (!box) return;
     box.innerHTML = "<div class='gh-loading'>加载 README…</div>";
     try {
-      const r = await api("/api/projects/" + encodeURIComponent(pid) + "/github/readme");
+      const r = await api(projUrl(pid) + "/github/readme");
       const br = branch || r.branch || "main";
       const text = fixReadmeImages(r.text, r.owner, r.repo, br);
       if (!text.trim()) { box.innerHTML = "<div class='gh-loading'>远程仓库没有 README</div>"; return; }
@@ -770,7 +786,7 @@
     const box = $("ghCommitsBox");
     if (!box) return;
     try {
-      const r = await api("/api/projects/" + encodeURIComponent(pid) + "/github/commits");
+      const r = await api(projUrl(pid) + "/github/commits");
       box.innerHTML = r.commits.length
         ? r.commits.map((c) => "<div class='gh-commit'><span class='ghc-msg'>" + esc(c.message) + "</span>" +
             "<span class='ghc-sha'>" + esc(c.sha) + "</span>" +
@@ -786,7 +802,7 @@
     if (!box) return;
     box.innerHTML = "<div class='gh-loading'>加载发行版…</div>";
     try {
-      const r = await api("/api/projects/" + encodeURIComponent(pid) + "/github/releases");
+      const r = await api(projUrl(pid) + "/github/releases");
       box.innerHTML = r.releases.length
         ? r.releases.map((x) => "<div class='gh-rel'><span class='ghr-tag'>" + esc(x.tag) + "</span>" +
             "<span class='ghr-date'>" + esc((x.published_at || "").slice(0, 10)) + "</span>" +
@@ -1067,14 +1083,27 @@
 
   async function initTerminalView() {
     const status = $("termStatus");
+    // 记住每个项目上次使用的终端类型
+    if (S.current && typeof localStorage !== "undefined") {
+      const saved = localStorage.getItem("pd.termKind." + S.current.id);
+      if (saved === "opencode" || saved === "shell") {
+        termKindCurrent = saved;
+        const sel = $("termKind");
+        if (sel) sel.value = saved;
+      }
+    }
     if (status) status.textContent = "检查 opencode 服务…";
     try {
       const st = await api("/api/oc/status");
       if (!st.available) { showTermEmpty(st); if (status) status.textContent = "服务未运行"; return; }
       hideTermEmpty();
-      if (status) status.textContent = "opencode v" + esc(st.version || "?");
       await ensureTerminal();
-      if (!termWs || termWs.readyState > 1) await connectTerminal(termKindCurrent, false);
+      if (!termWs || termWs.readyState > 1) {
+        if (status) status.textContent = "opencode v" + esc(st.version || "?");
+        await connectTerminal(termKindCurrent, false);
+      } else if (status) {
+        status.textContent = (termKindCurrent === "opencode" ? "opencode" : "shell") + " · 已连接";
+      }
     } catch (err) {
       showTermEmpty({ error: err.message });
       if (status) status.textContent = "检查失败";
@@ -1129,11 +1158,12 @@
     try {
       const cols = term ? term.cols : 100;
       const rows = term ? term.rows : 30;
-      const res = await api("/api/projects/" + encodeURIComponent(S.current.id) + "/oc/pty", {
+      const res = await api(projUrl(S.current.id) + "/oc/pty", {
         method: "POST", body: { kind: kind, new: !!forceNew, cols: cols, rows: rows },
       });
       termPtyId = res.id;
       termKindCurrent = kind;
+      if (typeof localStorage !== "undefined" && S.current) localStorage.setItem("pd.termKind." + S.current.id, kind);
       if (term) { term.reset(); term.clear(); }
       const proto = location.protocol === "https:" ? "wss:" : "ws:";
       const ws = new WebSocket(proto + "//" + location.host + res.ws);
@@ -1161,7 +1191,7 @@
 
   function resizeTerminal(cols, rows) {
     if (!termPtyId || !S.current) return;
-    api("/api/projects/" + encodeURIComponent(S.current.id) + "/oc/pty/" + termPtyId + "/resize",
+    api(projUrl(S.current.id) + "/oc/pty/" + termPtyId + "/resize",
       { method: "POST", body: { cols: cols, rows: rows } }).catch(() => {});
   }
   const ICON_SYMBOLS = [
@@ -1202,7 +1232,7 @@
     if (btn) { btn.disabled = true; btn.textContent = "生成中…"; }
     toast(S._iconChoice.mode === "upload" ? "正在保存图标…" : "正在生成图标…");
     try {
-      await api("/api/projects/" + encodeURIComponent(S.current.id) + "/icon", {
+      await api(projUrl(S.current.id) + "/icon", {
         method: "POST", body: S._iconChoice,
       });
       S.logoRev = (S.logoRev || 0) + 1;
@@ -1230,7 +1260,7 @@
     if (!panel) return;
     panel.innerHTML = "<div class='build-log'>加载文稿…</div>";
     try {
-      const docs = await api("/api/projects/" + encodeURIComponent(pid) + "/documents?scope=all");
+      const docs = await api(projUrl(pid) + "/documents?scope=all");
       if (seq !== S.drawerSeq || !S.current || S.current.id !== pid) return;
       if (!docs.length) {
         panel.innerHTML = "<div class='build-log'>未找到文档（支持 docx/doc/pdf/pptx/xlsx/md/txt）</div>";
@@ -1264,7 +1294,7 @@
     if (!panel) return;
     panel.innerHTML = "<div class='ver-block'><div class='ver-head'><h4>AI 操作日志</h4><button class='btn btn-sm' id='btnAILogRefresh'>刷新</button></div><div class='build-log'>加载中…</div></div>";
     try {
-      const logs = await api("/api/projects/" + encodeURIComponent(pid) + "/ai-logs");
+      const logs = await api(projUrl(pid) + "/ai-logs");
       if (seq !== S.drawerSeq || !S.current || S.current.id !== pid) return;
       const box = panel.querySelector(".build-log");
       if (!logs.length) {
@@ -1542,7 +1572,7 @@
     if (!S.compliance) {
       panel.innerHTML = "<div class='build-log'>加载合规检查中…</div>";
       try {
-        S.compliance = await api("/api/projects/" + encodeURIComponent(pid) + "/compliance");
+        S.compliance = await api(projUrl(pid) + "/compliance");
         if (seq !== S.drawerSeq || !S.current || S.current.id !== pid) return;
       } catch (err) {
         panel.innerHTML = "<div class='build-log'>加载失败：" + esc(err.message) + "</div>";
@@ -1550,6 +1580,10 @@
       }
     }
     const c = S.compliance;
+    const chip = $("ovCompStatus");
+    if (chip && target === "ovCompliance") {
+      chip.textContent = c.compliant ? "合规 ✓" : "待整改 " + (c.summary.total - c.summary.passed) + " 项";
+    }
     let html = "";
     html += "<div class='ver-block'><div class='ver-head'><h4>项目合规 · " + esc(c.type) + "</h4>" +
       "<button class='btn btn-sm' id='btnComplianceRefresh'>刷新</button></div>" +
@@ -1607,7 +1641,7 @@
     if (!box) return;
     box.innerHTML = "<div class='build-status'>执行中…</div>";
     try {
-      const res = await api("/api/projects/" + encodeURIComponent(S.current.id) + "/compliance/fix", {
+      const res = await api(projUrl(S.current.id) + "/compliance/fix", {
         method: "POST", body: { actions: keys, confirm: true },
       });
       box.innerHTML = res.results.map((r) =>
@@ -1796,8 +1830,8 @@
     const seq = S.drawerSeq;
     try {
       const [versions, builds] = await Promise.all([
-        api("/api/projects/" + encodeURIComponent(id) + "/versions"),
-        api("/api/projects/" + encodeURIComponent(id) + "/builds"),
+        api(projUrl(id) + "/versions"),
+        api(projUrl(id) + "/builds"),
       ]);
       if (seq !== S.drawerSeq || !S.current || S.current.id !== id) return;
       S.versions = versions;
@@ -1823,7 +1857,7 @@ async function runBuild(script) {
     const status = box.querySelector(".build-status");
     let jobId = null;
     try {
-      const res = await api("/api/projects/" + encodeURIComponent(S.current.id) + "/build", {
+      const res = await api(projUrl(S.current.id) + "/build", {
         method: "POST", body: { script: script },
       });
       jobId = res.job_id;
@@ -1885,7 +1919,7 @@ async function runBuild(script) {
     form.querySelectorAll("input, select, textarea, button").forEach((el) => { el.disabled = true; });
     let jobId;
     try {
-      const res = await api("/api/projects/" + encodeURIComponent(S.current.id) + "/release", { method: "POST", body: body });
+      const res = await api(projUrl(S.current.id) + "/release", { method: "POST", body: body });
       jobId = res.job_id;
     } catch (err) {
       status.textContent = "启动失败：" + err.message;
@@ -2310,7 +2344,7 @@ async function runBuild(script) {
     if (!panel) return;
     panel.innerHTML = "<div class='build-log'>加载技术栈…</div>";
     try {
-      const data = await api("/api/projects/" + encodeURIComponent(pid) + "/techstack");
+      const data = await api(projUrl(pid) + "/techstack");
       if (seq !== S.drawerSeq || !S.current || S.current.id !== pid) return;
       let html = "<div class='ver-head'><h4>技术栈 · " + esc(S.current.title) + "</h4>" +
         "<span class='spacer'></span>" +
@@ -2355,7 +2389,7 @@ async function runBuild(script) {
   }
 
   function openTsEditor(panel, pid) {
-    const path = "/api/projects/" + encodeURIComponent(pid) + "/techstack";
+    const path = projUrl(pid) + "/techstack";
     api(path).then((data) => {
       panel.innerHTML =
         "<div class='ver-head'><h4>编辑技术栈</h4><span class='spacer'></span>" +
@@ -2413,7 +2447,7 @@ async function runBuild(script) {
     if (!wrap || !S.types.length) return;
     const tabLabels = S.types[0].tab_labels || {};
     const keys = Object.keys(tabLabels);
-    const always = ["overview", "ailog"];
+    const always = ["overview"];  // 仅「概览」强制保留（AI 日志已并入 AI 栏目）
     wrap.innerHTML = "";
     S.types.forEach((t) => {
       const block = document.createElement("div");
@@ -2534,7 +2568,10 @@ async function runBuild(script) {
         const cb = form.elements["tab_" + t.name + "_" + key];
         if (cb && cb.checked) checked.push(key);
       });
-      if (checked.length) typeTabs[t.name] = checked;
+      // 与默认一致则不落盘：避免把默认菜单冻结成快照（后续版本新增栏目才能自动生效）
+      const def = Array.isArray(t.default_tabs) && t.default_tabs.length ? t.default_tabs : null;
+      const same = def && checked.length === def.length && def.every((k) => checked.indexOf(k) >= 0);
+      if (checked.length && !same) typeTabs[t.name] = checked;
     });
     const confirmPolicy = {};
     ["push", "delete", "github_create", "release", "archive"].forEach((k) => {
@@ -2808,6 +2845,10 @@ async function runBuild(script) {
       const drawer = $("drawer");
       drawer.classList.toggle("full");
       fullBtn.textContent = drawer.classList.contains("full") ? "⛶" : "⤢";
+      const v = $("aiView-terminal");
+      if (term && v && v.classList.contains("active")) {
+        setTimeout(() => { try { if (fitAddon) fitAddon.fit(); } catch (e) { /* ignore */ } }, 60);
+      }
     });
     $("btnOpenFolder").addEventListener("click", () => handleOverviewAction("open"));
     $("btnCopyPath").addEventListener("click", () => handleOverviewAction("copy"));
