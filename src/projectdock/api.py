@@ -17,19 +17,71 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import agent as agent_mod
-from . import iconmaker
-from . import ailog, backup, builder, compliance, console, contract, ghrepo, github, naming, oc_client, presets, protocols, release, scanner, techstack, update, versioning
+from . import (
+    ailog,
+    backup,
+    builder,
+    compliance,
+    console,
+    contract,
+    ghrepo,
+    github,
+    iconmaker,
+    naming,
+    oc_client,
+    presets,
+    protocols,
+    release,
+    scanner,
+    techstack,
+    update,
+    versioning,
+)
 from .agent import AGENTS
 from .config import APP_NAME, APP_VERSION
-from .db import delete_custom_type, delete_project, get_custom_type, get_project, list_custom_types, list_projects, set_pinned, set_version_scheme, upsert_custom_type, upsert_project
-from .models import (AGENT_NAMES, PROJECT_TYPES, THEMES, AILogCreate, AgentBatch, AgentRun,
-                     AiTestPayload,
-                     BackupRestore, BuildRun, ComplianceFix, CustomTypeCreate, GithubAuthPayload,
-                     GithubCreatePayload, GithubSetRemotePayload, IconPayload, OcPtyCreate, OcPtyResize,
-                     OpenPath, OpenUrl,
-                     ProjectCreate, ProjectImport, ProjectInit, ProjectUpdate, ReleaseRun, SettingsUpdate,
-                     TechstackPayload, UpdateInstall)
+from .db import (
+    delete_custom_type,
+    delete_project,
+    get_custom_type,
+    get_project,
+    list_custom_types,
+    list_projects,
+    set_pinned,
+    set_version_scheme,
+    upsert_custom_type,
+    upsert_project,
+)
+from .models import (
+    AGENT_NAMES,
+    PROJECT_TYPES,
+    THEMES,
+    AgentBatch,
+    AgentRun,
+    AILogCreate,
+    AiTestPayload,
+    BackupRestore,
+    BuildRun,
+    ComplianceFix,
+    CustomTypeCreate,
+    GithubAuthPayload,
+    GithubCreatePayload,
+    GithubSetRemotePayload,
+    IconPayload,
+    OcPtyCreate,
+    OcPtyResize,
+    OpenPath,
+    OpenUrl,
+    ProjectCreate,
+    ProjectImport,
+    ProjectInit,
+    ProjectUpdate,
+    ReleaseRun,
+    SettingsUpdate,
+    TechstackPayload,
+    UpdateInstall,
+)
 from .state import AppState
+
 
 def _locate_web_dir() -> Path:
     """定位前端目录：兼容源码运行与 PyInstaller 冻结模式（onedir 下前端在 _internal/web）。"""
@@ -71,6 +123,11 @@ def create_app(state: AppState) -> FastAPI:
             return {"id": pid, "name": pid, "type": (entry.ptype or "其他") if entry else "其他",
                     "path": str(p), "description": ""}
         raise HTTPException(status_code=404, detail="项目不存在")
+
+    def _project_dir(pid: str) -> str:
+        """项目目录绝对路径（供 opencode 作用域 / 终端使用）。"""
+        proj = _resolve_project(pid)
+        return str(Path(proj["path"]).resolve())
 
     def _type_spec(ptype: str) -> dict | None:
         if ptype in presets.PRESETS:
@@ -165,15 +222,13 @@ def create_app(state: AppState) -> FastAPI:
 
     @api.get("/projects/{pid}/oc/ptys")
     def oc_ptys(pid: str) -> list[dict]:
-        proj = _resolve_project(pid)
-        return oc_client.list_ptys(str(Path(proj["path"]).resolve()))
+        return oc_client.list_ptys(_project_dir(pid))
 
     @api.post("/projects/{pid}/oc/pty", status_code=201)
     def oc_create_pty(pid: str, payload: OcPtyCreate) -> dict:
         """创建/复用一个内嵌终端（opencode TUI 或 shell），返回 WebSocket 路径。"""
-        proj = _resolve_project(pid)
         kind = payload.kind if payload.kind in ("opencode", "shell") else "opencode"
-        directory = str(Path(proj["path"]).resolve())
+        directory = _project_dir(pid)
         pty = None
         if not payload.new:
             for item in oc_client.list_ptys(directory):
@@ -190,14 +245,12 @@ def create_app(state: AppState) -> FastAPI:
 
     @api.delete("/projects/{pid}/oc/pty/{pty_id}")
     def oc_delete_pty(pid: str, pty_id: str) -> dict:
-        proj = _resolve_project(pid)
-        oc_client.delete_pty(str(Path(proj["path"]).resolve()), pty_id)
+        oc_client.delete_pty(_project_dir(pid), pty_id)
         return {"ok": True}
 
     @api.post("/projects/{pid}/oc/pty/{pty_id}/resize")
     def oc_resize_pty(pid: str, pty_id: str, payload: OcPtyResize) -> dict:
-        proj = _resolve_project(pid)
-        oc_client.resize_pty(str(Path(proj["path"]).resolve()), pty_id, payload.cols, payload.rows)
+        oc_client.resize_pty(_project_dir(pid), pty_id, payload.cols, payload.rows)
         return {"ok": True}
 
     @api.websocket("/oc/pty/{pty_id}/ws")
@@ -240,12 +293,12 @@ def create_app(state: AppState) -> FastAPI:
                 finally:
                     for t in tasks:
                         t.cancel()
-        except Exception:  # noqa: BLE001 - WS 断开属正常路径
+        except Exception:
             pass
         finally:
             try:
                 await websocket.close()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
 
     @api.get("/naming/styles")
@@ -289,6 +342,7 @@ def create_app(state: AppState) -> FastAPI:
                 "dirs": spec.get("dirs", []), "files": spec.get("files", {}),
                 "git": spec.get("git", True), "custom": False,
                 "tabs": presets.tabs_for_type(t, override),
+                "default_tabs": list(presets.DEFAULT_TABS.get(t, presets.DEFAULT_TABS["其他"])),
                 "tab_labels": presets.TAB_LABELS,
                 "version_scheme": protocols.version_scheme_for(t),
             })
@@ -299,6 +353,7 @@ def create_app(state: AppState) -> FastAPI:
                 "dirs": json.loads(row["dirs"]), "files": json.loads(row["files"]),
                 "git": bool(row["git"]), "custom": True,
                 "tabs": presets.tabs_for_type(ptype, override),
+                "default_tabs": list(presets.DEFAULT_TABS.get(ptype, presets.DEFAULT_TABS["其他"])),
                 "tab_labels": presets.TAB_LABELS,
                 "version_scheme": protocols.version_scheme_for(ptype),
             })
@@ -954,12 +1009,12 @@ def create_app(state: AppState) -> FastAPI:
                         break
                     try:
                         item = await asyncio.to_thread(job.queue.get, timeout=0.5)
-                    except (asyncio.TimeoutError, queue_module.Empty):
+                    except (TimeoutError, queue_module.Empty):
                         continue
                     yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
                     if item.get("type") == "end":
                         break
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
 
         return StreamingResponse(gen(), media_type="text/event-stream",

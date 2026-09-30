@@ -9,7 +9,6 @@ import pytest
 
 from projectdock import oc_client
 
-
 # ---------- 基础工具 ----------
 
 def test_parse_model():
@@ -210,6 +209,7 @@ def test_status_and_available(monkeypatch):
 
 def test_run_chat_task_event_mapping(monkeypatch, tmp_path):
     from types import SimpleNamespace
+
     from projectdock.db import connect, upsert_project
 
     settings = SimpleNamespace(oc_model="opencode-go/deepseek-v4.1-flash")
@@ -238,6 +238,7 @@ def test_run_chat_task_event_mapping(monkeypatch, tmp_path):
 
 def test_run_chat_task_failure(monkeypatch, tmp_path):
     from types import SimpleNamespace
+
     from projectdock.db import connect, upsert_project
 
     settings = SimpleNamespace(oc_model="")

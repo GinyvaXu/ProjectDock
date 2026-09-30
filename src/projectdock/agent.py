@@ -142,7 +142,7 @@ def system_prompt(project_name: str, project_path: str, type_info: dict | None =
         if ctx:
             lines.append("")
             lines.append(ctx)
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
     return "\n".join(lines)
 
@@ -156,6 +156,15 @@ async def run_agent_task(state, project_path: Path, agent: str, prompt: str, emi
     def status(text: str) -> None:
         emit({"type": "status", "text": text})
 
+    def fail(exc: Exception, prefix: str = "") -> None:
+        """统一的失败报告（各后端共用）。"""
+        emit("")
+        emit("———— 任务报告 ————")
+        emit(f"状态：失败（{prefix}{exc}）")
+        hint = AGENTS.get(agent, {}).get("hint")
+        if hint:
+            emit(f"提示：{hint}")
+
     label = AGENTS.get(agent, {}).get("label", agent)
     backup_path = None
     status(f"正在准备 · {label}（任务前检查备份）…")
@@ -163,7 +172,7 @@ async def run_agent_task(state, project_path: Path, agent: str, prompt: str, emi
         try:
             backup_path = backup.make_backup(project_path)
             emit(f"[备份] 已创建任务前快照：versions/backups/{backup_path.name}")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             emit(f"[备份] 跳过（{exc}）")
 
     if agent == "api":
@@ -174,13 +183,8 @@ async def run_agent_task(state, project_path: Path, agent: str, prompt: str, emi
         try:
             await _asyncio.to_thread(api_agent.run_api_agent, state.settings, project_path, prompt, emit, context)
             code = 0
-        except Exception as exc:  # noqa: BLE001
-            emit("")
-            emit("———— 任务报告 ————")
-            emit(f"状态：失败（{exc}）")
-            hint = AGENTS.get(agent, {}).get("hint")
-            if hint:
-                emit(f"提示：{hint}")
+        except Exception as exc:
+            fail(exc)
             raise
     elif agent == "opencode":
         import asyncio as _asyncio
@@ -190,13 +194,8 @@ async def run_agent_task(state, project_path: Path, agent: str, prompt: str, emi
         try:
             await _asyncio.to_thread(oc_client.run_chat_task, state.settings, state.conn, project_path, prompt, emit)
             code = 0
-        except Exception as exc:  # noqa: BLE001
-            emit("")
-            emit("———— 任务报告 ————")
-            emit(f"状态：失败（{exc}）")
-            hint = AGENTS.get(agent, {}).get("hint")
-            if hint:
-                emit(f"提示：{hint}")
+        except Exception as exc:
+            fail(exc)
             raise
     else:
         base_cmd = build_command(agent, prompt)
@@ -214,13 +213,8 @@ async def run_agent_task(state, project_path: Path, agent: str, prompt: str, emi
         status(f"正在调用 {label}：{' '.join(cmd[:4])}{' …' if len(cmd) > 4 else ''}")
         try:
             code = await stream_command(emit, cmd, str(project_path))
-        except Exception as exc:  # noqa: BLE001
-            emit("")
-            emit("———— 任务报告 ————")
-            emit(f"状态：失败（无法启动命令：{exc}）")
-            hint = AGENTS.get(agent, {}).get("hint")
-            if hint:
-                emit(f"提示：{hint}")
+        except Exception as exc:
+            fail(exc, "无法启动命令：")
             raise
         finally:
             if tmp_ctx:
@@ -248,7 +242,7 @@ async def run_agent_task(state, project_path: Path, agent: str, prompt: str, emi
             details=prompt[:500], git=git_info,
             backup=f"versions/backups/{backup_path.name}" if backup_path else "",
         )
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
     if (project_path / ".git").is_dir():
         _, head = await run_simple(["git", "log", "--oneline", "-1"], str(project_path))

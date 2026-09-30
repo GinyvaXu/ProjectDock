@@ -1,8 +1,6 @@
 """v1.1 新功能测试：GitHub 仓库管理 / 项目信息编辑 / Tab 合并 / 总控台标签。"""
 from __future__ import annotations
 
-from pathlib import Path
-
 from projectdock import ghrepo
 from projectdock.db import get_project
 

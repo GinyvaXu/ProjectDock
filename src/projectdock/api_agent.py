@@ -14,8 +14,8 @@ import os
 import subprocess
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 DEFAULT_TIMEOUT = 120
 MAX_STEPS = 40
@@ -37,8 +37,7 @@ def normalize_base_url(url: str) -> str:
     """规范化 Base URL：去尾斜杠；用户误带 /chat/completions 时自动剥掉。"""
     u = str(url or "").strip().rstrip("/")
     for suffix in ("/chat/completions", "/v1/chat/completions"):
-        if u.endswith(suffix):
-            u = u[: -len(suffix)]
+        u = u.removesuffix(suffix)
     return u.rstrip("/")
 
 

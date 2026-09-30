@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from projectdock.scanner import find_next_index, make_folder_name, parse_project_dir, scan_root
 
 

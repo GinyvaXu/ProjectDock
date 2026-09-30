@@ -1,9 +1,6 @@
 ﻿from __future__ import annotations
 
-from pathlib import Path
-
 from projectdock.compliance import check_compliance, detect_build_artifacts, quick_compliance
-from projectdock.presets import apply_preset
 from projectdock.versioning import list_build_artifacts
 
 

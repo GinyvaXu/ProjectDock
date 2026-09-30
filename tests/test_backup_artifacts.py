@@ -2,11 +2,8 @@
 """备份管理 + installer/build 产物扫描 + 版本感知归档 + 结构化任务事件。"""
 from __future__ import annotations
 
-import json
 import zipfile
-from pathlib import Path
 
-from projectdock import backup
 from projectdock.compliance import archive_root_artifacts, check_compliance
 from projectdock.versioning import list_build_artifacts
 
@@ -151,6 +148,7 @@ def test_check_compliance_adds_archive_artifacts_action(tmp_path):
 # ---------- 结构化任务事件（runner emit dict） ----------
 def test_job_registry_emits_structured_events(state):
     import asyncio
+
     from projectdock.runner import JobRegistry
     reg = JobRegistry()
 

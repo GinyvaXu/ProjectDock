@@ -1,13 +1,10 @@
 """命名规范风格（naming styles）测试：解析 / 识别 / 创建 / 优先级 / API。"""
 from __future__ import annotations
 
-from pathlib import Path
-
 from projectdock import naming
 from projectdock.config import Settings
 from projectdock.naming import make_folder_name, next_index, parse_name, resolve_style, sanitize_title
 from projectdock.scanner import find_next_index, list_unmanaged, parse_project_dir, parse_project_entry, scan_root
-
 
 # ---------- 解析 ----------
 

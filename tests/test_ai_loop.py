@@ -1,7 +1,5 @@
 ﻿from __future__ import annotations
 
-from pathlib import Path
-
 from projectdock import cli
 
 
@@ -32,7 +30,6 @@ def test_contract_api(client):
     assert "AI 操作日志" in agen
     # 合规修复动作里出现 create_contract
     rep = client.get(f"/api/projects/{pid}/compliance").json()
-    keys = [a["key"] for a in rep["actions"]]
     # 预设已生成契约 → 不应再出现 create_contract；验证建议项包含 AGENTS.md
     assert "contract" in [c["key"] for c in rep["checks"] if not c["required"]]
 

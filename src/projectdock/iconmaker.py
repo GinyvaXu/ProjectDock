@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """纯标准库项目图标生成器（无 PIL 依赖，可打包进 exe）。
 
 生成 iOS 风格项目图标：圆角方块 + 类型渐变背景 + 顶部玻璃高光 + 白色几何符号。
@@ -299,8 +298,6 @@ def make_logo_bytes(ptype: str = "其他", symbol: int | None = None, size: int 
         symbol = TYPE_SYMBOL.get(ptype, 6)
     symbol = max(0, min(len(_SYMBOL_DRAWERS) - 1, int(symbol)))
     _SYMBOL_DRAWERS[symbol](alpha, ss, ss, float(ss))
-    s = ss * 0.80  # 符号区域
-    cx0 = (ss - s) / 2
     # 把符号绘制结果裁剪到中央区域并按背景 alpha 合成
     white = bytearray(ss * ss * 4)
     for y in range(ss):
@@ -337,7 +334,13 @@ def make_logo_bytes(ptype: str = "其他", symbol: int | None = None, size: int 
             for dy in range(2):
                 for dx in range(2):
                     i = ((y * 2 + dy) * ss + (x * 2 + dx)) * 4
-                    r += out[i]; g += out[i + 1]; b += out[i + 2]; a += out[i + 3]
+                    r += out[i]
+                    g += out[i + 1]
+                    b += out[i + 2]
+                    a += out[i + 3]
             fi = (y * size + x) * 4
-            final[fi] = r >> 2; final[fi + 1] = g >> 2; final[fi + 2] = b >> 2; final[fi + 3] = a >> 2
+            final[fi] = r >> 2
+            final[fi + 1] = g >> 2
+            final[fi + 2] = b >> 2
+            final[fi + 3] = a >> 2
     return _encode_png(size, size, bytes(final))

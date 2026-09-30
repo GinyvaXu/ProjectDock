@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import datetime
 import sys
 from pathlib import Path
@@ -18,13 +17,13 @@ async def run_release(state, project_path: Path, cfg: dict, emit) -> None:
     build_script = cfg.get("build_script")
     push = bool(cfg.get("push"))
 
-    emit(f"[1/7] 备份项目（versions/backups/）")
+    emit("[1/7] 备份项目（versions/backups/）")
     backup_path = None
     if state.settings.backup:
         try:
             backup_path = backup.make_backup(project_path)
             emit(f"      已生成快照：{backup_path.name}")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             emit(f"      备份跳过（{exc}）")
 
     emit(f"[2/7] 更新 VERSION -> {version}")
@@ -104,7 +103,7 @@ async def run_release(state, project_path: Path, cfg: dict, emit) -> None:
     emit("")
     emit("———— 发布报告 ————")
     emit(f"版本：v{version}")
-    emit(f"更新日志：CHANGELOG.md（已插入条目）")
+    emit("更新日志：CHANGELOG.md（已插入条目）")
     if build_script:
         emit(f"构建产物：versions/v{version}/dist/（若构建成功）")
     if backup_path:

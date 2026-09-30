@@ -5,8 +5,8 @@ import os
 import queue
 import threading
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Awaitable, Callable, Optional
 
 CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 
@@ -16,9 +16,9 @@ class Job:
     id: str
     label: str
     status: str = "running"  # running | done | error
-    queue: "queue.Queue" = field(default_factory=queue.Queue)
-    error: Optional[str] = None
-    exit_code: Optional[int] = None
+    queue: queue.Queue = field(default_factory=queue.Queue)
+    error: str | None = None
+    exit_code: int | None = None
     started_at: float = field(default_factory=lambda: __import__("time").time())
 
 
@@ -106,7 +106,7 @@ class JobRegistry:
             job.status = "done" if code == 0 else "error"
             if code != 0:
                 job.error = f"进程退出码 {code}"
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             job.status = "error"
             job.error = str(exc)
         finally:
@@ -128,7 +128,7 @@ class JobRegistry:
 
             await coro_factory(emit)
             job.status = "done"
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             job.status = "error"
             job.error = str(exc)
         finally:

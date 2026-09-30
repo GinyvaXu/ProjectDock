@@ -2,15 +2,14 @@
 from __future__ import annotations
 
 import os
-import sys
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from projectdock import compliance, contract, presets, protocols, versioning
 from projectdock.protocols import PROTOCOLS, VERSION_SCHEMES
-
 
 # ---------- 协议注册表 ----------
 

@@ -6,3 +6,8 @@ addopts = "--cov=src/projectdock --cov-report=term-missing --cov-fail-under=80"
 [tool.ruff]
 line-length = 120
 target-version = "py312"
+
+[tool.ruff.lint]
+# 质量底线：语法/未使用/导入排序/空白（其余风格规则（DTZ/PLW1510/BLE 等）为项目有意选择，不强制）
+select = ["E4", "E7", "E9", "F", "W", "I"]
+ignore = ["E501", "E741"]

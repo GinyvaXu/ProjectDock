@@ -191,7 +191,7 @@ def apply_fix(project_path: Path, ptype: str, title: str, description: str,
     for key in keys:
         try:
             results.append({"key": key, **(_execute_fix(project_path, ptype, title, description, key, confirm))})
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             results.append({"key": key, "ok": False, "message": str(exc)})
     return {"results": results}
 

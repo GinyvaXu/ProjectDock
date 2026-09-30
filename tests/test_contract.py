@@ -1,10 +1,7 @@
 ﻿from __future__ import annotations
 
-from pathlib import Path
-
 from projectdock import ailog, contract
 from projectdock.presets import PRESETS, apply_preset
-from projectdock.versioning import read_version
 
 
 def _software(tmp_path, name="契约项目"):
@@ -58,7 +55,7 @@ def test_ailog_write_and_list(tmp_path):
     proj = _software(tmp_path)
     assert ailog.list_logs(proj) == []
     p1 = ailog.write_log(proj, agent="codex", action="写日志模块", result="done", summary="完成")
-    p2 = ailog.write_log(proj, agent="claude", action="修 bug", result="failed", summary="失败", source="inapp")
+    ailog.write_log(proj, agent="claude", action="修 bug", result="failed", summary="失败", source="inapp")
     assert p1.parent == proj / "logs" / "ai"
     logs = ailog.list_logs(proj)
     assert len(logs) == 2

@@ -6,11 +6,49 @@ import subprocess
 from pathlib import Path
 
 from . import protocols
-from .protocols import (  # noqa: F401 - 兼容旧引用（模板常量）
-    AGENTS_SOFTWARE, CHANGELOG_TEMPLATE, GITIGNORE_BASIC, GITIGNORE_SOFTWARE,
-    GODOT_README, INDEX_HTML, MAIN_PY, README_APP, README_BASIC, README_BATCH,
-    README_DATA, README_SOFTWARE, README_WEBSITE, USAGE_APP,
+from .protocols import (
+    AGENTS_SOFTWARE,
+    CHANGELOG_TEMPLATE,
+    GITIGNORE_BASIC,
+    GITIGNORE_SOFTWARE,
+    GODOT_README,
+    INDEX_HTML,
+    MAIN_PY,
+    README_APP,
+    README_BASIC,
+    README_BATCH,
+    README_DATA,
+    README_SOFTWARE,
+    README_WEBSITE,
+    USAGE_APP,
 )
+
+# 公开 API（含兼容旧引用的模板常量：compliance / tests 经 presets 读取）
+__all__ = [
+    "AGENTS_SOFTWARE",
+    "ALL_TAB_KEYS",
+    "CHANGELOG_TEMPLATE",
+    "DEFAULT_TABS",
+    "GITIGNORE_BASIC",
+    "GITIGNORE_SOFTWARE",
+    "GODOT_README",
+    "INDEX_HTML",
+    "MAIN_PY",
+    "NEW_TABS",
+    "PRESETS",
+    "README_APP",
+    "README_BASIC",
+    "README_BATCH",
+    "README_DATA",
+    "README_SOFTWARE",
+    "README_WEBSITE",
+    "TAB_LABELS",
+    "USAGE_APP",
+    "apply_custom_preset",
+    "apply_preset",
+    "ensure_git_commit",
+    "tabs_for_type",
+]
 
 
 def _slug(title: str) -> str:

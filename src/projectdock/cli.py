@@ -79,7 +79,7 @@ def _project_type(project: Path) -> str:
         for row in list_projects(_db()):
             if row["id"] == project.name or Path(row["path"]) == project:
                 return row["type"] or "其他"
-    except Exception:  # noqa: BLE001 - 注册表不可用时不阻塞 CLI
+    except Exception:
         pass
     return "其他"
 
@@ -258,7 +258,7 @@ def cmd_techstack(args) -> None:
         return
     data = techstack.read_techstack(project)
     if not data["exists"]:
-        sys.stdout.write(f"[techstack] 项目尚无 TECHSTACK.md，用 --init 创建模板。\n")
+        sys.stdout.write("[techstack] 项目尚无 TECHSTACK.md，用 --init 创建模板。\n")
         return
     sys.stdout.write(data["content"])
 
@@ -350,7 +350,7 @@ def main(argv: list[str] | None = None) -> int:
         args.func(args)
     except SystemExit:
         raise
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         sys.exit(f"错误：{exc}（{CLI_HINT}）")
     return 0
 

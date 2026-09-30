@@ -8,7 +8,7 @@ from pathlib import Path
 from . import naming
 
 APP_NAME = "ProjectDock"
-APP_VERSION = "1.8.0"
+APP_VERSION = "1.9.0"
 
 
 def _gh_logged_in() -> bool:
@@ -215,9 +215,7 @@ class Settings:
                 text = str(value or "").strip().lower()
                 if text == naming.STYLE_AUTO or text in naming.STYLES:
                     self._data[key] = text
-            elif key in ("api_base_url", "api_model"):
-                self._data[key] = str(value or "").strip()
-            elif key == "api_key":
+            elif key in ("api_base_url", "api_model") or key == "api_key":
                 self._data[key] = str(value or "").strip()
             elif key == "oc_model":
                 self._data[key] = str(value or "").strip() or "opencode-go/deepseek-v4.1-flash"

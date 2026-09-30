@@ -20,8 +20,8 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Callable, Iterator
 
 SERVICE_CONFIG = Path.home() / ".config" / "opencode" / "service.json"
 SERVICE_USER = "opencode"

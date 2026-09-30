@@ -21,7 +21,7 @@ def test_registry_status_missing():
 def test_registry_error_path(tmp_path):
     registry = JobRegistry()
     job = registry.start([sys.executable, "-c", "import sys; sys.exit(3)"], str(tmp_path), "失败")
-    lines = _drain(job)
+    _drain(job)
     assert job.status == "error"
     assert job.exit_code == 3
     assert "退出码" in (job.error or "")

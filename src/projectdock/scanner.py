@@ -4,10 +4,9 @@ import os
 import stat as stat_module
 from pathlib import Path
 
-from . import naming, protocols
-from .naming import ParsedProject, sanitize_title
+from . import compliance, naming, protocols
+from .naming import ParsedProject, sanitize_title  # noqa: F401 - sanitize_title 兼容旧引用（api.py 经 scanner 调用）
 from .versioning import read_version
-from . import compliance
 
 INVALID_CHARS = naming.INVALID_CHARS  # 兼容旧引用
 
