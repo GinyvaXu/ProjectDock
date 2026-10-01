@@ -1,7 +1,12 @@
 # ProjectDock 项目状态
-- 版本：1.9.0（代码质量与交互优化）
-- 状态：v1.8.0 → v1.9.0 质量迭代（开发中，未发布构建）
+- 版本：1.10.0（全新品牌图标）
+- 状态：v1.9.0 → v1.10.0 图标迭代（开发中，未发布构建）
 - GitHub：https://github.com/GinyvaXu/ProjectDock（私有，main 分支）
+
+## v1.10.0（2026-10-01）
+1. 全新「PD」字母组合品牌图标（蓝→紫渐变、iOS 圆角）：assets/icon.png（1024）/ icon.ico（7 尺寸）/ web/logo.png（圆角 256）
+2. 图标源文件归档 assets/design-2026-09-30/（与 AgentFloat v3.7.0 同批设计）
+3. 构建链路（debug/exe/Setup）沿用 assets/icon.ico 自动生效
 
 ## v1.9.0（2026-09-30）
 1. 去冗余：agent 失败报告统一 / `_project_dir` / 前端 `projUrl`（32 处）；ruff 规则固化并全绿

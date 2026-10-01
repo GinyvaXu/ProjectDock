@@ -3,6 +3,12 @@
 本文件记录 ProjectDock 的版本迭代。格式：语义化版本 + 日期 + 变更分组。
 
 
+## [1.10.0] - 2026-10-01
+### Changed（全新品牌图标）
+- 全新「PD」字母组合品牌图标（蓝→紫渐变、iOS 圆角 ≈22.5%）：`assets/icon.png`（1024）/ `assets/icon.ico`（7 尺寸含 24px）/ `web/logo.png`（圆角 256，侧栏 + favicon 生效）
+- 图标源文件归档 `assets/design-2026-09-30/`（1024 / 512 / 256 / 圆角 512 / ICO，与 AgentFloat v3.7.0 同批设计）；debug / exe / Setup 安装包构建沿用 `assets/icon.ico`，自动携带新图标
+- 设计出处：图标素材库 `docs/design/02-ai/final/projectdock-*`
+
 ## [1.9.0] - 2026-09-30
 ### Changed（代码质量与交互优化）
 - **代码审查与去冗余**：三后端统一失败报告（`fail()`）、项目路径助手 `_project_dir`、前端 `projUrl` 助手（32 处 URL 拼接归一）；移除未使用导入/变量；`pyproject.toml` 固化 ruff 质量规则（E4/E7/E9/F/W/I），`ruff check src tests` 全绿
